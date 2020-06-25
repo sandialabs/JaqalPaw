@@ -1,0 +1,3 @@
+[submodule "jaqal"]
+	path = jaqal
+	url = ../../iontraps/iqasm.git

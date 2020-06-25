@@ -1,0 +1,20 @@
+from PulseDefinitions.StandardGatePulses usepulses *
+
+let pi 3.141592653589793
+
+register q[8]
+
+//MS q[1] q[2] pi 0
+GaussPLE2 q[1] 0
+< weird q[1] 4 0
+  squigglyStraight q[2]
+  >
+
+< weird q[1] 4 0
+  weird q[2] 5 0
+  weird q[3] 6 0
+  weird q[4] 7 0
+  weird q[5] 8 0
+  weird q[6] 9 0
+  weird q[7] 10 0
+  >
