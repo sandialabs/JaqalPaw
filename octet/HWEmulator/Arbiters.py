@@ -72,13 +72,9 @@ async def SplineEngine(name, queue, time_list, data_list, waittrig_list, enablem
             time_list.append(time_list[-1]+dur)
             if mod_type > 5: # then we have a z rotation which must accumulate from old values
                 last_val = data_list[-1] if not reset_accum else 0
-                del data_list[-1]
                 data_list.append(last_val+U0_real)
-                data_list.append(data_list[-1])
             else:
-                #data_list.append(U0_real)
-                data_list[-1] = U0_real
-                data_list.append(0)
+                data_list.append(U0_real)
                 waittrig_list[-1] = waittrig
                 waittrig_list.append(0)
                 enablemask_list[-1] = enablemask
@@ -104,16 +100,14 @@ async def SplineEngine(name, queue, time_list, data_list, waittrig_list, enablem
             spline_data = pdq_spline(coeffs, [0], nsteps=dur)
             spline_data_real = list(map(mod_type_dict[mod_type]['realConvFunc'], spline_data))
             xdata_real = list(map(lambda x: time_list[-1]+x, xdata))
-            time_list.extend(xdata_real)
+            time_list.extend(xdata_real[1:])
             last_val = data_list[-1]
             if mod_type > 5: # then we have a z rotation which must accumulate from old values
                 if reset_accum:
                     last_val = 0
                 data_list.extend(last_val+np.array(spline_data_real))
-                data_list.append(data_list[-1])
             else:
                 data_list.extend(spline_data_real)
-                data_list.append(spline_data_real[-1])
             print(f"channel: {channel}, type: {mod_type}, Duration: {dur_real} s, "
                   f"U0: {U0_real}, U1: {U1_rshift}, U2: {U2_rshift}, U3: {U3_rshift}")
         # For good measure, wait for the duration encoded in the raw data, for more accurate emulation, this duration

@@ -106,6 +106,11 @@ async def FirmwareEmulator(data_list, num_channels=8, num_dtypes=8, master_data_
     print('====')
     print(f'Spline Engines experienced a net (parallel) delay of {total_slept_for:.2f} seconds')
 
+    for nc in range(num_channels): # 8 gate sequencers, one per channel
+        for nd in range(num_dtypes): # 64 spline engines, 8 per channel (4 parameters, 2 tones)
+            master_data_record[nc][nd]['data'][:-1] = master_data_record[nc][nd]['data'][1:]
+            master_data_record[nc][nd]['waittrig'][:-1] = master_data_record[nc][nd]['waittrig'][1:]
+            master_data_record[nc][nd]['enablemask'][:-1] = master_data_record[nc][nd]['enablemask'][1:]
 
 
 from collections import defaultdict
