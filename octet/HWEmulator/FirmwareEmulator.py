@@ -243,7 +243,6 @@ def plotOctetEmulatorOutput(ret, compare_lut_to_bypass=False, num_plots=8):
                                  mdr[chnm][i+j*4]['data'],
                                  #where='post',
                                  **ls_list[chnm])
-                #plt.xlim([1,time_scale*np.array(mdr[chnm][i+j*4]['time'][-1])])
                 #if compare_lut_to_bypass:
                     #axl[ip][jp].step(time_scale*np.array(mdr2[chnm][i+j*4]['time']), mdr2[chnm][i+j*4]['data'], where='post')
                 plt.subplots_adjust(hspace=.001, wspace=.001)

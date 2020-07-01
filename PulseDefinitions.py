@@ -254,61 +254,6 @@ class CustomGateDefinitions(StandardGatePulses):
   
 class BrandonPulses(StandardGatePulses):
 
-    def gate_idle(self,qubit):
-        return [PulseData(qubit,
-                          1e-5)]
-
-    def gate_robust(self,qubit1,qubit2):
-        return [PulseData(GLOBAL_BEAM_CHANNEL,
-                          1e-5,
-                          amp0 = 50,
-                          freq0 = 20e6
-                        ),
-                PulseData(qubit1,
-                          1e-5,
-                          amp0 = (0,10,50,10,0),
-                          freq0 = (1e6,20e6,1e6),
-                          amp1 = (0,10,50,10,0),
-                          freq1 = (2e6,30e6,2e6),
-                        ),
-                PulseData(qubit2,
-                          1e-5,
-                          amp0 = (0,8,40,8,0),
-                          freq0 = (2e6,20e6,2e6),
-                          amp1 = (0,10,50,10,0),
-                          freq1 = (2e6,30e6,2e6),
-                        )
-                
-                        ] # qubit_number, duration (s), freq (Hz), phase (degrees)
-
-    def gate_toy(self,qubit,qubit2,scale=1):
-        return [PulseData(qubit,scale*1e-5,
-                            amp0 = [0,10,5],
-                            freq0 = (0,10e6,5e6,4e6),
-                            phase0 = (0,90),
-                            framerot0 = (0,90)
-                            ),
-                PulseData(qubit2,scale*1e-5,
-                            amp0 = [0,10,5],
-                            freq0 = 4e6,
-                            phase0 = (0,90),
-                            framerot0 = 90,
-                            apply_at_eof_mask = 1,
-                            # rst_frame_mask = 1
-                            ),
-                PulseData(qubit,scale*1e-5,
-                            amp0 = [5,10,0],
-                            freq0 = (4e6,10e6,5e6,0),
-                            phase0 = (0,90),
-                            framerot0 = 0,
-                            )]
-
-    def gate_toy2(self,qubit,scale=1):
-        return [PulseData(qubit,scale*1e-5,
-                            freq0 = [0,10e6,5e6],
-                            amp0 = (0,10,5,0)
-                            )]
-
     def gate_pst_loop(self,qubit):
 
         # Rabi rates in Hz
