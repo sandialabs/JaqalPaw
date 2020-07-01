@@ -296,35 +296,44 @@ class BrandonPulses(StandardGatePulses):
                      2999558.960721427,
                      2853378.6817786656] 
 
-        freq0 = [ 0*self.aom_center_frequency
-                - 0*self.adjusted_carrier_splitting/2.]*3
+        global_freq = self.aom_center_frequency - self.adjusted_carrier_splitting/2.
        
-        freq1 = [ 0*self.aom_center_frequency
-                + 0*self.adjusted_carrier_splitting/2.
-                + det
-                    for det in detunings] 
+        bsb_freq = [self.aom_center_frequency
+                   + self.adjusted_carrier_splitting/2.
+                   + det
+                       for det in detunings]
+
+        rsb_freq = [self.aom_center_frequency
+                     + self.adjusted_carrier_splitting/2.
+                     - det
+                         for det in detunings]
 
         fac_qubit1 = self.single_qubit_rabi_angle_calibrations[qubit1]
         fac_qubit2 = self.single_qubit_rabi_angle_calibrations[qubit2]
 
-        amps_qubit1 = [ self.amplitude_from_rabi_rate(rabi,fac_qubit1)
+        amps_qubit1 = [self.amplitude_from_rabi_rate(rabi,fac_qubit1)
                             for rabi in rabis]  
-        amps_qubit2 = [ self.amplitude_from_rabi_rate(rabi,fac_qubit2)
+        amps_qubit2 = [self.amplitude_from_rabi_rate(rabi,fac_qubit2)
                             for rabi in rabis]
         
-        return [PulseData(  qubit1,
-                            90e-6,
-                            freq0 = freq0,
-                            amp0 = tuple(amps_qubit1),
-                            freq1 = tuple(freq1),
-                            amp1 = tuple(amps_qubit1),
+        return [PulseData(GLOBAL_BEAM_CHANNEL,
+                          90e-6,
+                          freq0=global_freq,
+                          amp0=tuple(amps_qubit1),
                           ),
-                PulseData(  qubit2,
-                            90e-6,
-                            freq0 = freq0,
-                            amp0 = tuple(amps_qubit2),
-                            freq1 = tuple(freq1),
-                            amp1 = tuple(amps_qubit2),
+                PulseData(qubit1,
+                          90e-6,
+                          freq0=tuple(rsb_freq),
+                          amp0=tuple(amps_qubit1),
+                          freq1=tuple(bsb_freq),
+                          amp1=tuple(amps_qubit1),
+                          ),
+                PulseData(qubit2,
+                          90e-6,
+                          freq0=tuple(rsb_freq),
+                          amp0=tuple(amps_qubit2),
+                          freq1=tuple(bsb_freq),
+                          amp1=tuple(amps_qubit2),
                           )]
 
     def gate_pst_loop(self,qubit):
