@@ -254,6 +254,79 @@ class CustomGateDefinitions(StandardGatePulses):
   
 class BrandonPulses(StandardGatePulses):
 
+    def gate_robust_ms(self,qubit1,qubit2):
+
+        # Rabi rates in Hz
+        rabis = [0.0,
+                 276936.8015078513,
+                 141450.5790117699,
+                 276907.9261594575,
+                 141450.5790117699,
+                 276936.8015078513,
+                 0.0]
+
+        # detunings from carrier transition in Hz
+        detunings = [2853378.6817786656,
+                     2999558.960721427,
+                     3021082.753418489,
+                     3107568.608853587,
+                     3063522.493598082,
+                     3032234.836329433,
+                     3156834.7763933865,
+                     2967680.023122517,
+                     3107769.453822267,
+                     3092894.1128954873,
+                     3035625.301950426,
+                     3096764.933502942,
+                     3038549.749174705,
+                     3035004.3970164433,
+                     3020346.389851864,
+                     3035004.3970164433,
+                     3038549.749174705,
+                     3096764.933502942,
+                     3035625.301950426,
+                     3092894.1128954873,
+                     3107769.453822267,
+                     2967680.023122517,
+                     3156834.7763933865,
+                     3032234.836329433,
+                     3063522.493598082,
+                     3107568.608853587,
+                     3021082.753418489,
+                     2999558.960721427,
+                     2853378.6817786656] 
+
+        freq0 = [ 0*self.aom_center_frequency
+                - 0*self.adjusted_carrier_splitting/2.]*3
+       
+        freq1 = [ 0*self.aom_center_frequency
+                + 0*self.adjusted_carrier_splitting/2.
+                + det
+                    for det in detunings] 
+
+        fac_qubit1 = self.single_qubit_rabi_angle_calibrations[qubit1]
+        fac_qubit2 = self.single_qubit_rabi_angle_calibrations[qubit2]
+
+        amps_qubit1 = [ self.amplitude_from_rabi_rate(rabi,fac_qubit1)
+                            for rabi in rabis]  
+        amps_qubit2 = [ self.amplitude_from_rabi_rate(rabi,fac_qubit2)
+                            for rabi in rabis]
+        
+        return [PulseData(  qubit1,
+                            90e-6,
+                            freq0 = freq0,
+                            amp0 = tuple(amps_qubit1),
+                            freq1 = tuple(freq1),
+                            amp1 = tuple(amps_qubit1),
+                          ),
+                PulseData(  qubit2,
+                            90e-6,
+                            freq0 = freq0,
+                            amp0 = tuple(amps_qubit2),
+                            freq1 = tuple(freq1),
+                            amp1 = tuple(amps_qubit2),
+                          )]
+
     def gate_pst_loop(self,qubit):
 
         # Rabi rates in Hz
