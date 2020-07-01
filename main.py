@@ -1,7 +1,8 @@
 
 from octet.HWEmulator.FirmwareEmulator import trigger_events, printMetadataOutput, plotOctetEmulatorOutput
 from octet.jaqalCompiler import CircuitCompiler
-from PulseDefinitions import StandardGatePulses, CustomGateDefinitions
+from PulseDefinitions import StandardGatePulses, CustomGateDefinitions, BrandonPulses
+
 
 def flatten(code):
     mtbytes = b''
@@ -12,8 +13,8 @@ def flatten(code):
 
 
 if __name__=='__main__':
-    pulseDef = CustomGateDefinitions
-    cc = CircuitCompiler(file="test.jql",
+    pulseDef = BrandonPulses
+    cc = CircuitCompiler(file="test2.jql",
                          pulse_definition=pulseDef(),
                          num_channels=8,
                          override_dict={},

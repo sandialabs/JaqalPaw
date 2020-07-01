@@ -251,5 +251,145 @@ class CustomGateDefinitions(StandardGatePulses):
                           self.nominal_single_qubit_pi_time*10,
                           amp0=conv(self.wave_helper(nperiods)),
                           amp1=conv(self.wave_helper(nperiods)))]
+  
+class BrandonPulses(StandardGatePulses):
+
+    def gate_idle(self,qubit):
+        return [PulseData(qubit,
+                          1e-5)]
+
+    def gate_robust(self,qubit1,qubit2):
+        return [PulseData(GLOBAL_BEAM_CHANNEL,
+                          1e-5,
+                          amp0 = 50,
+                          freq0 = 20e6
+                        ),
+                PulseData(qubit1,
+                          1e-5,
+                          amp0 = (0,10,50,10,0),
+                          freq0 = (1e6,20e6,1e6),
+                          amp1 = (0,10,50,10,0),
+                          freq1 = (2e6,30e6,2e6),
+                        ),
+                PulseData(qubit2,
+                          1e-5,
+                          amp0 = (0,8,40,8,0),
+                          freq0 = (2e6,20e6,2e6),
+                          amp1 = (0,10,50,10,0),
+                          freq1 = (2e6,30e6,2e6),
+                        )
+                
+                        ] # qubit_number, duration (s), freq (Hz), phase (degrees)
+
+    def gate_toy(self,qubit,qubit2,scale=1):
+        return [PulseData(qubit,scale*1e-5,
+                            amp0 = [0,10,5],
+                            freq0 = (0,10e6,5e6,4e6),
+                            phase0 = (0,90),
+                            framerot0 = (0,90)
+                            ),
+                PulseData(qubit2,scale*1e-5,
+                            amp0 = [0,10,5],
+                            freq0 = 4e6,
+                            phase0 = (0,90),
+                            framerot0 = 90,
+                            apply_at_eof_mask = 1,
+                            # rst_frame_mask = 1
+                            ),
+                PulseData(qubit,scale*1e-5,
+                            amp0 = [5,10,0],
+                            freq0 = (4e6,10e6,5e6,0),
+                            phase0 = (0,90),
+                            framerot0 = 0,
+                            )]
+
+    def gate_toy2(self,qubit,scale=1):
+        return [PulseData(qubit,scale*1e-5,
+                            freq0 = [0,10e6,5e6],
+                            amp0 = (0,10,5,0)
+                            )]
+
+    def gate_pst_loop(self,qubit):
+
+        # Rabi rates in Hz
+        rabis = [0.0,
+                 391647.78061262943,
+                 200041.32724397225,
+                 391606.9447033127,
+                 200041.32724397225,
+                 391647.78061262943,
+                 0.0]
+
+        # detunings from carrier transition in Hz
+        detunings = [2853378.6817786656,
+                     2999558.960721427,
+                     3021082.753418489,
+                     3107568.608853587,
+                     3063522.493598082,
+                     3032234.836329433,
+                     3156834.7763933865,
+                     2967680.023122517,
+                     3107769.453822267,
+                     3092894.1128954873,
+                     3035625.301950426,
+                     3096764.933502942,
+                     3038549.749174705,
+                     3035004.3970164433,
+                     3020346.389851864,
+                     3035004.3970164433,
+                     3038549.749174705,
+                     3096764.933502942,
+                     3035625.301950426,
+                     3092894.1128954873,
+                     3107769.453822267,
+                     2967680.023122517,
+                     3156834.7763933865,
+                     3032234.836329433,
+                     3063522.493598082,
+                     3107568.608853587,
+                     3021082.753418489,
+                     2999558.960721427,
+                     2853378.6817786656] 
+
+        freq0 = [ 0*self.aom_center_frequency
+                - 0*self.adjusted_carrier_splitting/2.]*3
+       
+        freq1 = [ 0*self.aom_center_frequency
+                + 0*self.adjusted_carrier_splitting/2.
+                + det
+                    for det in detunings] 
+
+        fac = self.single_qubit_rabi_angle_calibrations[0]
+        amps = [ self.amplitude_from_rabi_rate(rabi,fac)
+                    for rabi in rabis]
+        
+        return [PulseData(  qubit,
+                            90e-6,
+                            freq0 = freq0,
+                            amp0 = tuple(amps),
+                            freq1 = tuple(freq1),
+                            amp1 = tuple(amps),
+                          )]
+
+    def amplitude_from_rabi_rate(self, rabi_rate, calibration_factor):
+        """Convert from a Rabi rate of a Raman transition to
+        to the "amplitude" of one Raman tone. Here, "amplitude" is the percentage
+        of the electric field amplitude of one Raman tone used during calibration,
+        assuming the calibration used square pulses of equal amplitude for each
+        Raman tone. The current Raman transition must also use Raman tones of equal
+        amplitude, but a squre pulse is not necessary.
+        
+        Inputs: rabi_rate = Rabi rate of Raman transition (Hz)
+
+                calibration_factor = rabi_cal_1 * rabi_cal_2 / (2 Delta pi)
+
+        Outputs: amplitude = percentage of the electric field amplitude of one
+                             Raman tone used during calibration (%)
+        """
+        import numpy as np
+        return np.sqrt(100*(2*np.pi*rabi_rate)/np.pi/calibration_factor)
 
 
+
+
+       

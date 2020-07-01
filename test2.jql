@@ -1,0 +1,9 @@
+from PulseDefinitions.BrandonPulses usepulses *
+
+register q[8]
+
+pst_loop q[1]
+ 
+//robust q[1] q[2]
+
+//loop 1 { <toy q[1] q[2] 4.0 | {toy q[3] q[4] 2.0; toy q[3] q[4] 2.0} > }
