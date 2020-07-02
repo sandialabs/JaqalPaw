@@ -378,11 +378,11 @@ class BrandonPulses(StandardGatePulses):
                      2999558.960721427,
                      2853378.6817786656] 
 
-        freq0 = [ 0*self.aom_center_frequency
-                - 0*self.adjusted_carrier_splitting/2.]*3
+        freq0 = [ self.aom_center_frequency
+                - self.adjusted_carrier_splitting/2.]*3
        
-        freq1 = [ 0*self.aom_center_frequency
-                + 0*self.adjusted_carrier_splitting/2.
+        freq1 = [ self.aom_center_frequency
+                + self.adjusted_carrier_splitting/2.
                 + det
                     for det in detunings] 
 
@@ -390,12 +390,12 @@ class BrandonPulses(StandardGatePulses):
         amps = [ self.amplitude_from_rabi_rate(rabi,fac)
                     for rabi in rabis]
         
-        return [PulseData(  qubit,
-                            90e-6,
-                            freq0 = freq0,
-                            amp0 = tuple(amps),
-                            freq1 = tuple(freq1),
-                            amp1 = tuple(amps),
+        return [PulseData(qubit,
+                          90e-6,
+                          freq0=freq0,
+                          amp0=tuple(amps),
+                          freq1=tuple(freq1),
+                          amp1=tuple(amps),
                           )]
 
     def amplitude_from_rabi_rate(self, rabi_rate, calibration_factor):
