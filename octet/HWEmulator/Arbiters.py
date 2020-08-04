@@ -4,11 +4,13 @@ from .URAM import GADDRW, SADDRW, PADDRW, GLUT, SLUT, PLUT, URAM
 from .ByteDecoding import *
 import copy
 
+
 def construct_fifos(num_spline_fifos=8, num_channels=8, spline_fifo_depth=4, gate_seq_fifo_depth=32, dma_depth=256):
     spline_fifos = [[asyncio.Queue(maxsize=spline_fifo_depth) for _ in range(num_spline_fifos)] for _ in range(num_channels)]
     gseq_fifos = [asyncio.Queue(maxsize=gate_seq_fifo_depth) for _ in range(num_channels)]
     dma_queue = asyncio.Queue(maxsize=dma_depth)
     return spline_fifos, gseq_fifos, dma_queue
+
 
 async def DMAArbiter(name, queue, data_output_queues):
     """Send data to the correct channel (or gate sequencer input FIFO) based on metadata"""
@@ -18,6 +20,7 @@ async def DMAArbiter(name, queue, data_output_queues):
         channel = (data >> (DMA_MUX_OFFSET)) & 0b111
         await data_output_queues[channel].put(raw_data)
         queue.task_done()
+
 
 async def GateSeqArbiter(name, queue, data_output_queues):
     """Performs the same functions as the hardware GateSequencer IP cores.

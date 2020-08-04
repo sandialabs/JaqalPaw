@@ -5,7 +5,7 @@ from scipy.interpolate import CubicSpline
 from octet.encodingParameters import MAXLEN, DMA_MUX_OFFSET_LOC, OUTPUT_EN_LSB_LOC, FRQ_FB_EN_LSB_LOC, \
                                      WAIT_TRIG_LSB_LOC, CLR_FRAME_LSB_LOC, APPLY_EOF_LSB_LOC, SYNC_FLAG_LSB_LOC, \
                                      AMPMOD0, AMPMOD1, FRQMOD0, FRQMOD1, PHSMOD0, PHSMOD1, FRMROT0, FRMROT1, \
-                                     CLOCK_FREQUENCY, ENDIANNESS
+                                     CLOCK_FREQUENCY, ENDIANNESS, MAXAMP
 
 from itertools import zip_longest
 
@@ -13,8 +13,10 @@ from itertools import zip_longest
 # ------------------- Helper Functions ------------------- #
 # ######################################################## #
 
+
 class Spline(tuple):
     pass
+
 
 class Discrete(tuple):
     pass
@@ -27,6 +29,7 @@ def convertToBytes(d, bytenum=5, signed=True):
         print(f"{bytenum}")
         raise
 
+
 def mapToBytes(data,bytenum=5):
     try:
         return reduce(lambda x, y: x+y, [d.to_bytes(bytenum, byteorder=ENDIANNESS, signed=True) for d in data])
@@ -34,16 +37,18 @@ def mapToBytes(data,bytenum=5):
         print(f"Data: {data}\nBitLengths: {[len(bin(d))-2 for d in data]}")
         raise
 
+
 def convertFreqFull(frqw):
     """Converts to full 40 bit frequency word for
        packing into 256 bit spline data"""
     convf = int(frqw/CLOCK_FREQUENCY*(2**40-1))
     return convf
 
+
 def convertPhaseFull(phsw):
     """Converts to full 40 bit frequency word for
        packing into 256 bit spline data"""
-    if abs(phsw)>=360.0:
+    if abs(phsw) >= 360.0:
         phsw %= 360.0
     if phsw >= 180:
         phsw -= 360
@@ -52,10 +57,12 @@ def convertPhaseFull(phsw):
     convf = int(phsw/360.0*(2**40-1))
     return convf
 
+
 def convertAmpFull(ampw):
-    convf = int(ampw/200.0*(2**16-1))
+    convf = int(ampw/MAXAMP*(2**16-1))
     fw1 = (convf << 23)
     return fw1
+
 
 def delist(x):
     """For use in pulse command, just ensures that a single value
@@ -64,6 +71,7 @@ def delist(x):
         return x[0]
     else:
         return x
+
 
 # ######################################################## #
 # ------------ pdq Spline Coefficient Mapping ------------ #
@@ -77,11 +85,17 @@ def cs_mapper_int(interp_table, nsteps=409625, shift_len=16):
     new_coeffs = np.zeros(interp_table.shape)
     for i in range(interp_table.shape[1]):
         tstep = 1/nsteps if not isinstance(nsteps, list) else 1/nsteps[i]
-        new_coeffs[3,i] = int(interp_table[3,i])
-        new_coeffs[2,i] = int((interp_table[2,i]*tstep + interp_table[1,i]*tstep**2 + interp_table[0,i]*tstep**3)*2**shift_len)
-        new_coeffs[1,i] = int((2*interp_table[1,i]*tstep**2 + 6*interp_table[0,i]*tstep**3)*2**(shift_len*2))
-        new_coeffs[0,i] = int((6*interp_table[0,i]*tstep**3)*2**(shift_len*3))
+        new_coeffs[3,i] = float(interp_table[3,i])
+        new_coeffs[2,i] = float((interp_table[2,i]*tstep + interp_table[1,i]*tstep**2 + interp_table[0,i]*tstep**3)*2**shift_len)
+        new_coeffs[1,i] = float((2*interp_table[1,i]*tstep**2 + 6*interp_table[0,i]*tstep**3)*2**(shift_len*2))
+        new_coeffs[0,i] = float((6*interp_table[0,i]*tstep**3)*2**(shift_len*3))
     return new_coeffs
+
+
+def signed_n_bit_map(x, n=40):
+    """Convert integer x to a signed n-bit number"""
+    return ((x & ~(-1 << n)) ^ (1 << n-1)) - (1 << n-1)
+
 
 def cs_mapper_int_auto_shift(interp_table, nsteps, apply_phase_mask=False):
     """Map spline coefficients into representation that
@@ -100,9 +114,9 @@ def cs_mapper_int_auto_shift(interp_table, nsteps, apply_phase_mask=False):
             new_coeffs[3, i] = (((int(interp_table[3, i]) & 0xffffffffff) ^ 0x8000000000) - 0x8000000000)
         else:
             new_coeffs[3, i] = int(interp_table[3, i])
-        new_coeffs[2,i] = interp_table[2,i]*tstep + interp_table[1,i]*tstep**2 + interp_table[0,i]*tstep**3
-        new_coeffs[1,i] = 2*interp_table[1,i]*tstep**2 + 6*interp_table[0,i]*tstep**3
-        new_coeffs[0,i] = 6*interp_table[0,i]*tstep**3
+        new_coeffs[2, i] = interp_table[2, i]*tstep + interp_table[1, i]*tstep**2 + interp_table[0, i]*tstep**3
+        new_coeffs[1, i] = 2*interp_table[1, i]*tstep**2 + 6*interp_table[0, i]*tstep**3
+        new_coeffs[0, i] = 6*interp_table[0, i]*tstep**3
 
         # coefficients have been mapped for PDQ interpolation, but the
         # higher order coefficients may be resolution limited. The data
@@ -125,9 +139,9 @@ def cs_mapper_int_auto_shift(interp_table, nsteps, apply_phase_mask=False):
         # re-map coefficients with bit shift, bit shift is applied as 2**(shift*N) as opposed
         # to simply bit-shifting the coefficients as in int(val)<<(shift*N). This is done in
         # order to get more resolution on the LSBs, which accumulate over many clock cycles
-        new_coeffs[2,i] = int(new_coeffs[2,i]*2**shift_len)
-        new_coeffs[1,i] = int(new_coeffs[1,i]*2**(shift_len*2))
-        new_coeffs[0,i] = int(new_coeffs[0,i]*2**(shift_len*3))
+        new_coeffs[2, i] = int(new_coeffs[2, i]*2**shift_len)
+        new_coeffs[1, i] = int(new_coeffs[1, i]*2**(shift_len*2))
+        new_coeffs[0, i] = int(new_coeffs[0, i]*2**(shift_len*3))
 
         # shift_len can vary for every coefficient, so a list of shift parameters is passed
         # along with the coefficients for metadata tagging
@@ -135,9 +149,11 @@ def cs_mapper_int_auto_shift(interp_table, nsteps, apply_phase_mask=False):
 
     return new_coeffs, shift_len_list
 
+
 # ######################################################## #
 # ------------------ PulseData Encoding ------------------ #
 # ######################################################## #
+
 
 def applyMetadata(bytelist, modtype=0, bypass=False, waittrig=False, shift_len=0, sync_mask=0,
                   enable_mask=0, fb_enable_mask=0, channel=0, apply_at_eof_mask=0, rst_frame_mask=0, ind=0):
@@ -344,3 +360,34 @@ def pulse(DDS, dur, freq0=0, phase0=0, amp0=0, freq1=0, phase1=0, amp1=0, waittr
 
 
 
+if __name__=='__main__':
+    newcub = [[0.281, 0.00025229900202094926, 0, -1.8137940121256967e-07],
+              [0.276, -0.0006545980040418989, -1.8137940121256965e-05, -1.979102993937152e-06],
+              [-0.21, -0.012363906985853356, -0.00021604823951497213, 7.88779137696118e-06],
+              [-1.212, 0.005470225947455323, 0.0005727308981811457, -1.2490062513907566e-05],
+              [0.117, 0.00029300319603206115, -0.0006762753532096108, 1.5096458678669088e-05],
+              [-0.719, 0.008147761268416405, 0.0008333705146572978, -2.054177220076878e-05],
+              [0.839, -0.011224048269697725, -0.0012208067054195802, 2.7056630124406043e-05],
+              [-1.878, 0.001978431810374439, 0.0014848563070210235, -2.392874829685537e-05],
+              [1.756, 0.03082032102819995, -0.0009080185226645135, 8.016363063015433e-06],
+              [1.634, -0.019899715923174226, -0.00010638221636297016, 3.8392960447936405e-06],
+              [-0.248, -0.01134145733550304, 0.00027754738811639395, -2.2835472421899945e-06],
+              [-0.375, 0.004995545265186382, 4.9192663897394504e-05, -1.221107076033664e-06],
+              [0.167, 0.003809276274757513, -7.291804370597189e-05, 9.519755463246486e-07],
+              [0.342, 0.0012773496357835678, 2.2279510926492972e-05, -2.2279510926492973e-07]]
+    cub = np.array(list(reversed(list(map(lambda x: np.array(list(x)), zip(*newcub))))))
+    print(cub)
+    from octet.HWEmulator.pdqSpline import pdq_spline
+    res = pdq_spline(cub, range(14), nsteps=100)
+    print(len(res))
+
+    x = list(range(15))
+    y = [0.281, 0.276, -0.21, -1.212, 0.117, -0.719, 0.839, -1.878, 1.756, 1.634, -0.248, -0.375, 0.167, 0.342, 0.544]
+
+    cs = CubicSpline(x, y, bc_type=((2, 0.0), (2, 0.0)))
+    cuborig = cs_mapper_int(cs.c, 100, 0)
+    res2 = pdq_spline(cuborig, range(14), nsteps=100)
+    print(len(res2))
+    print(res == res2)
+    print(res[:10])
+    print(res2[:10])

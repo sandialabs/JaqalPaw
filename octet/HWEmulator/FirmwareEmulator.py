@@ -131,13 +131,14 @@ def trigger_events(input_bytes):
     loop.close()
     ch_list = list()
     for chnm in range(8):
-        for n in range(1): # wait trig masks apply to all parameters
+        for n in range(1):  # wait trig masks apply to all parameters
             tlist = []
             for idx, t in enumerate(master_data_record[chnm][n]['time']):
                 if master_data_record[chnm][n]['waittrig'][idx]:
                     tlist.append(t)
             ch_list.append(tlist)
     return ch_list
+
 
 def printMetadataOutput(input_bytes):
     master_data_record = {c: {d:{'time':copy.copy([0]), 'data':copy.copy([0]), 'waittrig':copy.copy([0]), 'enablemask':copy.copy([0])} for d in range(8)} for c in range(8)}

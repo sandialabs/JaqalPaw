@@ -7,6 +7,7 @@ from octet.encodingParameters import MODTYPE_LSB, DMA_MUX_OFFSET, ENDIANNESS
 from jaqal.jaqal.interface import Interface, MemoizedInterface
 import time
 from functools import lru_cache
+import runpy
 
 flatten = lambda x: [y for l in x for y in l]
 
@@ -37,7 +38,6 @@ class TimeStampedWord:
 
     def __repr__(self):
         return f"type: {self.mod_type} start: {self.start_time}"
-
 
 
 def mapFromBytes(d, bytenum=5):
@@ -78,6 +78,7 @@ def timesort_bytelist(bytelist):
         wordlist.append(spb.word)
     return wordlist
 
+
 # ######################################################## #
 # ------ Convert jaqal AST to GateSlice IR Layer --------- #
 # ######################################################## #
@@ -113,6 +114,25 @@ class CircuitConstructor:
         if self.parser_interface.usepulses:
             self.gate_pulse_info = list(self.parser_interface.usepulses.keys())[0]
         return self.exported_constants, self.gate_pulse_info
+
+    def import_gate_pulses(self):
+        if self.gate_pulse_info is None:
+            self.get_dependencies()
+        if self.gate_pulse_info is None:
+            raise CircuitCompilerException("No gate pulse file specified!")
+        gp_path = Path(self.file).parent
+        jaqal_lets, self.gate_pulse_info = self.get_dependencies()
+        gp_name = self.gate_pulse_info[-1]  # jaqal token returns a list of imports (split at '.'), last one is class name
+        for p in self.gate_pulse_info[:-1]:
+            gp_path /= p  # construct path object from usepulses call
+        gp_path = gp_path.with_suffix('.py')
+        if gp_path.exists():
+            self.gate_pulse_file_path = str(gp_path)
+        else:
+            raise CircuitCompilerException(f"Can't find path {str(gp_path)}")
+        pd_import = runpy.run_path(gp_path, init_globals={'PulseData': PulseData})
+        self.pulse_definition = pd_import[gp_name]()
+        return self.pulse_definition
 
     def generate_ast(self, file=None, override_dict=None):
         if self.file is None:
@@ -171,7 +191,6 @@ class CircuitConstructor:
                     glist.append(self.construct_gate_loop(g))
                 else:
                     raise Exception(f"I don't know what to do with {g}")
-
         return glist
 
     def construct_gate_loop(self, g):
@@ -230,6 +249,7 @@ class CircuitCompiler(CircuitConstructor):
         self.delay_settings = None
         self.set_global_delay(global_delay)
         self.initialize_gate_name = 'prepare_all'
+        self.import_gate_pulses()
 
     def set_global_delay(self, global_delay=None):
         if global_delay is None:

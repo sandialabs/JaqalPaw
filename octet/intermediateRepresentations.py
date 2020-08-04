@@ -3,6 +3,7 @@ from collections import defaultdict
 from octet.pulseBinarization import pulse, Spline, Discrete
 from octet.encodingParameters import CLKFREQ
 
+
 class PulseException(Exception):
     pass
 
@@ -75,7 +76,6 @@ class PulseData:
                 f"wt:{self.waittrig}, sm: {self.sync_mask}, em: {self.enable_mask}, fe: {self.fb_enable_mask}"
                 f"a: {self.apply_at_eof_mask}, r: {self.rst_frame_mask}, d: {self.delay}")
 
-
     def __eq__(self, other):
         if not isinstance(other, PulseData):
             return False
@@ -141,7 +141,6 @@ class PulseData:
         pd_cache[hash(self)] = self.binary_data
         return self.binary_data
 
-
     @property
     def duration(self):
         return self.dur
@@ -160,6 +159,7 @@ class PulseData:
             for k,v in bdatdict.items():
                 print(f" dtype {k}, total clk {v}")
             print("E-----------------")
+
 
 def append_prepend_distribute(ch, pdl, dur, apd=0):
     if apd == 0: #append
@@ -192,8 +192,10 @@ def append_prepend_distribute(ch, pdl, dur, apd=0):
             new_pd = PulseData(ch, dur)
             pdl.append(new_pd)
 
+
 class GateSlice:
     CHANNEL_NUM = 8
+
     def __init__(self, num_channels=None):
         self.channel_data = defaultdict(list)
         self.num_channels = num_channels or self.CHANNEL_NUM
@@ -201,14 +203,14 @@ class GateSlice:
 
     def __repr__(self):
         retlist = []
-        for k,v in self.channel_data.items():
+        for k, v in self.channel_data.items():
             retlist.append(f"Channel {k}: {v}")
         return "\n".join(retlist)
 
     def merge(self, other):
         k1s = set(self.channel_data.keys())
         k2s = set(other.channel_data.keys())
-        for k in k1s|k2s:
+        for k in k1s | k2s:
             if k in k1s:
                 if k in k2s:
                     if self.channel_data[k] != other.channel_data[k]:
@@ -252,7 +254,7 @@ class GateSlice:
 
     def flatten_common_single(self, k):
         if len(self.channel_data[k])>1:
-            for i,(pd1,pd2) in enumerate(zip(self.channel_data[k][:-1], self.channel_data[k][1:])):
+            for i, (pd1, pd2) in enumerate(zip(self.channel_data[k][:-1], self.channel_data[k][1:])):
                 pd1_dag = copy(pd1)
                 pd1_dag.dur = 1
                 pd2_dag = copy(pd2)
@@ -262,7 +264,6 @@ class GateSlice:
                     self.channel_data[k][i:i+2] = [pd1_dag]
                     return True
         return False
-
 
     def flatten_common(self):
         for k in range(self.num_channels):

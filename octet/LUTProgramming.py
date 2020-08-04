@@ -4,6 +4,7 @@ from octet.encodingParameters import ENDIANNESS, DMA_MUX_OFFSET, PROGPLUT, PROGS
                                      PLUT_BYTECNT_OFFSET, SLUT_BYTECNT_OFFSET, GLUT_BYTECNT_OFFSET, \
                                      GSEQ_BYTECNT_OFFSET, GSEQ_ENABLE_OFFSET
 
+
 def bytes2int(b):
     return int.from_bytes(b, byteorder=ENDIANNESS, signed=False)
 

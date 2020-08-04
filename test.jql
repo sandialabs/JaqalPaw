@@ -1,4 +1,4 @@
-from PulseDefinitions.StandardGatePulses usepulses *
+from PulseDefinitions.CustomGateDefinitions usepulses *
 
 let pi 3.141592653589793
 

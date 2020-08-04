@@ -1,6 +1,7 @@
 CLOCK_FREQUENCY = 819.25e6
 
 MAXFREQ = 500.0
+MAXAMP = 100.0
 
 ENDIANNESS = 'little'
 MAXLEN = 256//8
@@ -62,7 +63,7 @@ SLUT_BYTECNT = 9
 GLUT_BYTECNT = 7
 GSEQ_BYTECNT = 35
 
-MODBITMASK = True # pass in modulation type as bitmask
+MODBITMASK = True  # pass in modulation type as bitmask
 FRQMOD0 = 0b00000001
 AMPMOD0 = 0b00000010
 PHSMOD0 = 0b00000100

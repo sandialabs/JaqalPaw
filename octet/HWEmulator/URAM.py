@@ -4,8 +4,10 @@ GADDRW = 6
 SADDRW = 12
 PADDRW = 10
 
+
 class URAMException(Exception):
     pass
+
 
 class URAM(UserDict):
     """URAM mimics the Ultra RAM blocks that hold the LUTs in the gate sequencer.
@@ -32,6 +34,7 @@ class URAM(UserDict):
             raise URAMException(f"Invalid URAM data {value}, "
                                 "must be {self.data_width} bits and less than {2**self.data_width}")
         self.data[key] = value
+
 
 GLUT = [URAM(address_width=GADDRW, data_width=2*SADDRW) for _ in range(8)]
 SLUT = [URAM(address_width=SADDRW, data_width=PADDRW) for _ in range(8)]
