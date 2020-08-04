@@ -1,7 +1,7 @@
 To clone the codebase, make sure to add the `--recurse` flag to the clone operation:
 
 ```
-git clone --recurse git@gitlab.sandia.gov:/dlobser/octetgatecompiler.git OctetGatecompiler/
+git clone --recurse git@gitlab.sandia.gov:/jaqal/jaqalpaw.git JaqalPaw/
 ```
 
 If you fail to add the recurse flag initially, you can subsequently clone the submodule by running
@@ -50,7 +50,7 @@ PulseData(channel,
 | `framerot0`, `framerot1`                             | `float`, `tuple`, `list`, `Discrete`, `Spline` | z rotation applied to tones 0 and 1. Frame rotation was used as a keyword argument since the rotation in z is specific to the experimental hardware and nomenclature. This is effectively identical to changing the phase, except that the value applied persists and is taken to be the new zero value for subsequent pulses. |
 | `xxxx_mask`                                          | `int`                                          | All mask types are treated as two-bit bitmasks, where tone0 and tone0 are controlled by the least and most significant bits respectively. In other words, allowed values are 0-3, where 0b00 has no effect, 0b01 affects tone 0, 0b10 affects tone 1 and 0b11 affects both tones. |
 | `enable_mask`                                        | `int`                                          | Toggles the static value of the output enable. When the output enable is disabled, or zero, the resulting output of the tone is ignored and forced to zero. |
-| fb_enable_mask                                       | `int`                                          | Toggles the static value of the frequency feedback  enable.  |
+| `fb_enable_mask`                                       | `int`                                          | Toggles the static value of the frequency feedback  enable.  |
 | `sync_mask`                                          | `int`                                          | Applies a global synchronization at the beginning of the pulse so that the phase is aligned to the global clock for the given frequency. |
 | `apply_at_eof_mask`                                  | `int`                                          | Applies `framerot` parameters with the _next_ pulse. This is to account for AC Stark shifts resulting from compensated pulses that take compensate for the frequency shift during the pulse. |
 | `clr_frame_rot_mask`                                 | `int`                                          | Resets the accumulated phase from previous `framerot` calls to 0 |
