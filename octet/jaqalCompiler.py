@@ -4,10 +4,14 @@ from collections import defaultdict
 from octet.LUTProgramming import programGLUT, programPLUT, programSLUT, gateSequenceBytes
 from itertools import zip_longest
 from octet.encodingParameters import MODTYPE_LSB, DMA_MUX_OFFSET, ENDIANNESS
-from jaqal.jaqal.interface import Interface, MemoizedInterface
+#from jaqal.jaqal.interface import Interface, MemoizedInterface
+from jaqalpaq.parser import parse_jaqal_string
+from jaqalpaq.core.algorithm import expand_macros, fill_in_let
+from jaqalpaq.core.algorithm.visitor import Visitor
 import time
 from functools import lru_cache
 import runpy
+from itertools import zip_longest
 
 flatten = lambda x: [y for l in x for y in l]
 
@@ -89,11 +93,6 @@ class Loop(list):
         self.repeats = repeats
 
 
-@lru_cache(maxsize=32)
-def create_parser(text, allow_no_usepulses=True):
-    return MemoizedInterface(text, allow_no_usepulses=allow_no_usepulses)
-
-
 class CircuitConstructor:
     """Walks the jaqal AST and constructs a list of GateSlice
        objects padding gaps with NOPs and ensuring no collisions"""
@@ -104,16 +103,16 @@ class CircuitConstructor:
         self.pulse_definition = pulse_definition
         self.exported_constants = None
         self.reg_list = None
-        self.parser_interface = None
         self.gate_pulse_info = None
+        # The circuit before any transformations have been done
+        self.base_circuit = None
+        # The circuit after certain transformations (such as
+        # overriding let variables) has occurred.
+        self.circuit = None
 
     def get_dependencies(self):
-        self.generate_ast()
-        self.exported_constants = {k[0]: v for k, v in self.parser_interface.exported_constants.items()}
-        self.gate_pulse_info = None
-        if self.parser_interface.usepulses:
-            self.gate_pulse_info = list(self.parser_interface.usepulses.keys())[0]
-        return self.exported_constants, self.gate_pulse_info
+        ast = self.generate_ast()
+        return get_let_constants(ast), self.gate_pulse_info
 
     def import_gate_pulses(self):
         if self.gate_pulse_info is None:
@@ -135,82 +134,182 @@ class CircuitConstructor:
         return self.pulse_definition
 
     def generate_ast(self, file=None, override_dict=None):
-        if self.file is None:
-            text = self.code_literal
-        else:
-            text = Path(self.file).read_text()
-        self.parser_interface = create_parser(text, allow_no_usepulses=True)
-        act_result, self.reg_list = self.parser_interface.get_uniformly_timed_gates_and_registers(self.override_dict)
-        return act_result
+        if self.base_circuit is None:
+            if self.file is None:
+                text = self.code_literal
+            else:
+                text = Path(self.file).read_text()
+            circuit, extra = parse_jaqal_string(text, autoload_pulses=False, return_usepulses=True)
+            usepulses = extra['usepulses']
+            self.base_circuit = expand_macros(circuit)
+            self.gate_pulse_info = list(usepulses.keys())[0]
 
-    @staticmethod
-    def transform_gate_arg(arg):
-        """Convert qubit registers to numbers, and return other arguments directly"""
-        if isinstance(arg, tuple):
-            return arg[1]
-        return arg
-
-    def construct_gate(self, gate):
-        """Constructs a GateSlice with the relevant PulseData given by the associated PulseDefinition"""
-        gslice = GateSlice(num_channels=self.CHANNEL_NUM)
-        if not hasattr(self.pulse_definition, 'gate_'+gate.gate_name):
-            raise CircuitCompilerException(f"Gate {gate.gate_name} not found")
-        if gate.gate_name in ['prepare_all', 'measure_all']:
-            args = [self.CHANNEL_NUM]
-            if len(gate.gate_args) > 0:
-                raise CircuitCompilerException(f"gate {gate.gate_name} cannot have parameters")
+        if override_dict is not None:
+            self.circuit = fill_in_let(self.circuit, override_dict)
         else:
-            args = [self.transform_gate_arg(garg) for garg in gate.gate_args]
-        gate_data = getattr(self.pulse_definition, 'gate_'+gate.gate_name)(*args)
+            self.circuit = self.base_circuit
+
+        return self.circuit
+
+    def construct_circuit(self, file, override_dict=None):
+        """Generate full circuit from jaqal file. Circuit is in the form of
+        PulseData objects."""
+        ast = self.generate_ast(file, override_dict=override_dict)
+        self.slice_list = convert_circuit_to_gateslices(
+            self.pulse_definition, ast, self.CHANNEL_NUM)
+
+
+def get_let_constants(ast):
+    """Return a list mapping let constant names to their numeric values."""
+    return {name: normalize_number(const.value)
+            for name, const in ast.constants.items()}
+
+
+def normalize_number(value):
+    """Return an int if the value is an integer (regardless of whether it
+    is represented as a float), or a float otherwise."""
+    if isinstance(value, int):
+        return value
+    elif isinstance(value, float):
+        if int(value) == value:
+            return int(value)
+    else:
+        raise TypeError("Can only normalize ints and floats")
+
+
+def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):
+    """Convert a Circuit into a list of GateSlice objects."""
+    visitor = CircuitConstructorVisitor(pulse_definition, num_channels)
+    return visitor.visit(circuit)
+
+
+class CircuitConstructorVisitor(Visitor):
+    """Convert a Circuit into a list of GateSlice objects."""
+
+    def __init__(self, pulse_definition, num_channels):
+        super().__init__()
+        self.pulse_definition = pulse_definition
+        self.num_channels = num_channels
+
+    def visit_Circuit(self, circuit):
+        slice_list = self.visit(circuit.body)
+
+        for slc in slice_list:
+            slc.make_durations_equal()
+
+        return slice_list
+
+    def visit_BlockStatement(self, block):
+        """Return a list of GateSlice's or Loop's from this block."""
+        slice_list = []
+        if block.parallel:
+            for stmt in block.statements:
+                stmt_slices = self.visit(stmt)
+                slice_list = merge_slice_lists(slice_list, stmt_slices)
+        else:
+            for stmt in block.statements:
+                slice_list.extend(self.visit(stmt))
+
+        return slice_list
+
+    def visit_GateStatement(self, gate):
+        """Create a list of a single GateSlice representing this gate."""
+        gslice = GateSlice(num_channels=self.num_channels)
+        if not hasattr(self.pulse_definition, 'gate_'+gate.name):
+            raise CircuitCompilerException(f"Gate {gate.name} not found")
+        if is_total_gate(gate.name):
+            args = [self.num_channels]
+            if len(gate.parameters) > 0:
+                raise CircuitCompilerException(f"gate {gate.name} cannot have parameters")
+        else:
+            args = [self.visit(garg) for garg in gate.parameters.values()]
+        gate_data = get_gate_data(self.pulse_definition, gate.name, args)
         if gate_data is not None:
             for pd in gate_data:
                 if pd.dur > 3:
                     gslice.channel_data[pd.channel].append(pd)
-        return gslice
+        return [gslice]
 
-    def construct_gate_block(self, gate_block):
-        """Walk AST parallel/sequential blocks"""
-        gslice = GateSlice(num_channels=self.CHANNEL_NUM)
-        glist = []
-        if gate_block.is_parallel_gate_block:
-            for g in gate_block.gates:
-                if g.is_gate:
-                    gslice.merge(self.construct_gate(g))
-                elif g.is_gate_block:
-                    gslice.merge(self.construct_gate_block(g))
-                else:
-                    raise Exception(f"I don't know what to do with {g}")
-            glist.append(gslice.make_durations_equal())
-        elif gate_block.is_sequential_gate_block:
-            for g in gate_block.gates:
-                if g.is_gate:
-                    glist.append(self.construct_gate(g).make_durations_equal())
-                elif g.is_gate_block:
-                    glist.append(self.construct_gate_block(g))
-                elif g.is_loop:
-                    glist.append(self.construct_gate_loop(g))
-                else:
-                    raise Exception(f"I don't know what to do with {g}")
-        return glist
+    def visit_LoopStatement(self, loop):
+        """Return a Loop object representing this loop."""
+        slice_list = self.visit(loop.statements)
+        return Loop(slice_list, repeats=loop.iterations)
 
-    def construct_gate_loop(self, g):
-        """Walk AST for 'loop' blocks"""
-        glist = Loop(repeats=g.repetition_count)
-        new_slice = self.construct_gate_block(g.block)
-        glist.extend(new_slice)
-        return [glist]
+    def visit_int(self, obj):
+        """Integer gate arguments remain unchanged."""
+        return obj
 
-    def construct_circuit(self, file, override_dict=None):
-        """Generate full circuit from jaqal file. Circuit is in the form of PulseData objects."""
-        ast = self.generate_ast(file, override_dict=override_dict)
-        self.slice_list = []
-        for g in ast:
-            if g.is_gate:
-                self.slice_list.append(self.construct_gate(g).make_durations_equal())
-            elif g.is_gate_block:
-                self.slice_list.append(self.construct_gate_block(g))
-            elif g.is_loop:
-                self.slice_list.append(self.construct_gate_loop(g))
+    def visit_float(self, obj):
+        """Float gate arguments remain unchanged."""
+        return normalize_number(obj)
+
+    def visit_NamedQubit(self, qubit):
+        """Return the index of this qubit in its register. The gate will know
+        by its position that this is a qubit index and not an integer."""
+        _, index = qubit.resolve_qubit()
+        return index
+
+
+def is_total_gate(gate_name):
+    """Return if this gate uses all available qubits without explicitly
+    mentioning them as arguments."""
+    return gate_name in ['prepare_all', 'measure_all']
+
+
+def gate_pulse_exists(pulse_definition, gate_name):
+    """Return whether the given pulse definition object has the given
+    gate."""
+    return hasattr(pulse_definition, make_gate_function_name(gate_name))
+
+
+def get_gate_data(pulse_definition, gate_name, args):
+    """Evaluate and return the gate data for a gate with the given
+    arguments. The gate is looked up in pulse_definition then evaluated
+    with args, which must be converted to numbers."""
+    if not all(isinstance(arg, (int, float)) for arg in args):
+        # This is a programming error that should be fixed
+        raise CircuitCompilerException(f"Bad arg type in {args}")
+    pulse_gate = getattr(pulse_definition, make_gate_function_name(gate_name))
+    return pulse_gate(*args)
+
+
+def make_gate_function_name(gate_name):
+    """Make the name of the function to look up a gate by in the pulse
+    definition object."""
+    return f"gate_{gate_name}"
+
+
+def merge_slice_lists(dst_list, src_list):
+    """Take two lists of GateSlice objects and merge them. Overwrites
+    dst_list."""
+
+    return [merge_slices(dst, src)
+            for dst, src in zip_longest(dst_list, src_list)]
+
+
+def merge_slices(dst, src):
+    """Merge two GateSlice objects. Handles the case where one or the
+    other is None. This will always return one of the arguments,
+    possibly modified, so the arguments must not be used afterwards.
+
+    """
+
+    if dst is None:
+        assert src is not None
+        return src
+    elif src is None:
+        assert dst is not None
+        return dst
+    else:
+        dst.merge(src)
+        return dst
+
+
+def iter_gate_parameters(gate):
+    """Iterate over gate parameters in order."""
+    parameter_types = gate.gate_def.parameters
+    for param in parameter_types:
+        yield gate.parameters[param.name]
 
 
 # ######################################################## #
