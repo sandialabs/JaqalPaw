@@ -230,6 +230,11 @@ class CircuitConstructorVisitor(Visitor):
                     gslice.channel_data[pd.channel].append(pd)
         return [gslice]
 
+    def visit_LoopStatement(self, loop):
+        """Return a Loop object representing this loop."""
+        slice_list = self.visit(loop.statements)
+        return Loop(slice_list, repeats=loop.iterations)
+
     def visit_int(self, obj):
         """Integer gate arguments remain unchanged."""
         return obj
