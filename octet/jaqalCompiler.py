@@ -111,8 +111,8 @@ class CircuitConstructor:
         self.circuit = None
 
     def get_dependencies(self):
-        self.generate_ast()
-        return None, self.gate_pulse_info
+        ast = self.generate_ast()
+        return get_let_constants(ast), self.gate_pulse_info
 
     def import_gate_pulses(self):
         if self.gate_pulse_info is None:
@@ -157,6 +157,24 @@ class CircuitConstructor:
         ast = self.generate_ast(file, override_dict=override_dict)
         self.slice_list = convert_circuit_to_gateslices(
             self.pulse_definition, ast, self.CHANNEL_NUM)
+
+
+def get_let_constants(ast):
+    """Return a list mapping let constant names to their numeric values."""
+    return {name: normalize_number(const.value)
+            for name, const in ast.constants.items()}
+
+
+def normalize_number(value):
+    """Return an int if the value is an integer (regardless of whether it
+    is represented as a float), or a float otherwise."""
+    if isinstance(value, int):
+        return value
+    elif isinstance(value, float):
+        if int(value) == value:
+            return int(value)
+    else:
+        raise TypeError("Can only normalize ints and floats")
 
 
 def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):
@@ -218,12 +236,7 @@ class CircuitConstructorVisitor(Visitor):
 
     def visit_float(self, obj, **kwargs):
         """Float gate arguments remain unchanged."""
-        if int(obj) == obj:
-            # This prevents errors in which the parser returns a float
-            # but we need to interpret it as an integer, often used
-            # for indexes.
-            return int(obj)
-        return obj
+        return normalize_number(obj)
 
     def visit_NamedQubit(self, qubit, **kwargs):
         """Return the index of this qubit in its register. The gate will know
