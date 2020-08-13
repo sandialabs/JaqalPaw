@@ -191,7 +191,7 @@ class CircuitConstructorVisitor(Visitor):
         self.pulse_definition = pulse_definition
         self.num_channels = num_channels
 
-    def visit_Circuit(self, circuit, **kwargs):
+    def visit_Circuit(self, circuit):
         slice_list = self.visit(circuit.body)
 
         for slc in slice_list:
@@ -199,7 +199,7 @@ class CircuitConstructorVisitor(Visitor):
 
         return slice_list
 
-    def visit_BlockStatement(self, block, **kwargs):
+    def visit_BlockStatement(self, block):
         """Return a list of GateSlice's or Loop's from this block."""
         slice_list = []
         if block.parallel:
@@ -208,11 +208,11 @@ class CircuitConstructorVisitor(Visitor):
                 slice_list = merge_slice_lists(slice_list, stmt_slices)
         else:
             for stmt in block.statements:
-                slice_list.extend(self.visit(stmt, equalize_gate_durations=False))
+                slice_list.extend(self.visit(stmt))
 
         return slice_list
 
-    def visit_GateStatement(self, gate, equalize_gate_durations=True):
+    def visit_GateStatement(self, gate):
         """Create a list of a single GateSlice representing this gate."""
         gslice = GateSlice(num_channels=self.num_channels)
         if not hasattr(self.pulse_definition, 'gate_'+gate.name):
@@ -230,15 +230,15 @@ class CircuitConstructorVisitor(Visitor):
                     gslice.channel_data[pd.channel].append(pd)
         return [gslice]
 
-    def visit_int(self, obj, **kwargs):
+    def visit_int(self, obj):
         """Integer gate arguments remain unchanged."""
         return obj
 
-    def visit_float(self, obj, **kwargs):
+    def visit_float(self, obj):
         """Float gate arguments remain unchanged."""
         return normalize_number(obj)
 
-    def visit_NamedQubit(self, qubit, **kwargs):
+    def visit_NamedQubit(self, qubit):
         """Return the index of this qubit in its register. The gate will know
         by its position that this is a qubit index and not an integer."""
         _, index = qubit.resolve_qubit()
