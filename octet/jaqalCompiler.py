@@ -173,6 +173,7 @@ def normalize_number(value):
     elif isinstance(value, float):
         if int(value) == value:
             return int(value)
+        return value
     else:
         raise TypeError("Can only normalize ints and floats")
 
@@ -268,7 +269,7 @@ def get_gate_data(pulse_definition, gate_name, args):
     with args, which must be converted to numbers."""
     if not all(isinstance(arg, (int, float)) for arg in args):
         # This is a programming error that should be fixed
-        raise CircuitCompilerException(f"Bad arg type in {args}")
+        raise CircuitCompilerException(f"Gate {gate_name}: Bad arg type in {args}")
     pulse_gate = getattr(pulse_definition, make_gate_function_name(gate_name))
     return pulse_gate(*args)
 

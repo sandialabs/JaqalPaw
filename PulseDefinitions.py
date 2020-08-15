@@ -64,7 +64,7 @@ class StandardGatePulses:
     def amplitude_from_rabi_angle(rabi_angle, duration, calibration_factor):
         amp = rabi_angle / np.pi / np.sqrt(calibration_factor * duration) * 100.0
         if amp > 100.0:
-            raise PulseException("Maximum amplitude exceeded!")
+            raise PulseException(f"Maximum amplitude exceeded! rabi_angle={rabi_angle}, amp={amp}, duration={duration}, calibration_factor={calibration_factor}")
         return amp
 
     @staticmethod
