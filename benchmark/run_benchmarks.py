@@ -4,7 +4,7 @@ from tempfile import NamedTemporaryFile
 import os
 import shutil
 from pathlib import Path
-import math
+import cProfile
 
 from jaqalpaq.core import Register
 from jaqalpaq.core.circuitbuilder import build
@@ -27,7 +27,7 @@ class Benchmark:
         """Override to set up environment."""
         pass
 
-    def tearUp(self):
+    def tearDown(self):
         """Override to tear down environment."""
         pass
 
@@ -52,6 +52,13 @@ class Benchmark:
             finally:
                 self.tearDown()
 
+    def profile(self):
+        self.setUp()
+        try:
+            cProfile.runctx("self.run()", globals(), locals(), sort='cumtime')
+        finally:
+            self.tearDown()
+
     @property
     def time(self):
         return sum(self.times) / len(self.times)
@@ -73,6 +80,12 @@ def run_benchmarks(benchmarks):
         bm = bm_cls()
         bm.start()
         print(bm.report())
+
+
+def profile_benchmarks(benchmarks):
+    for bm_cls in benchmarks:
+        bm = bm_cls()
+        bm.profile()
 
 
 class ManyGates(Benchmark):
@@ -257,7 +270,12 @@ def make_random_angle():
 
 def main():
     random.seed(1)  # Make deterministic
-    run_benchmarks([ManyGates])
+    benchmarks = [ManyGates]
+    profile = True
+    if profile:
+        profile_benchmarks(benchmarks)
+    else:
+        run_benchmarks(benchmarks)
 
 
 if __name__ == '__main__':
