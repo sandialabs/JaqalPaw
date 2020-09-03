@@ -1,7 +1,0 @@
-from PulseDefinitions.BrandonPulses usepulses *
-
-register q[8]
-
-pst_loop q[1]
-
-robust_ms q[1] q[2]

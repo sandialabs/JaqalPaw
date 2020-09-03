@@ -1,0 +1,12 @@
+from PulseDefinitions.StandardGatePulses usepulses *
+
+register q[8]
+
+let pi 3.141592653589793
+
+
+prepare_all
+R q[1] pi pi
+MS q[2] q[3] pi pi
+measure_all
+

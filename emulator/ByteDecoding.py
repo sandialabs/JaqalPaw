@@ -1,14 +1,15 @@
-from octet.jaqalCompiler import mapFromBytes
-# from .Utils.SystemParameters import *
-# from .Utils.HelperFunctions import *
-from octet.encodingParameters import *
-from octet.pulseBinarization import pulse, convertFreqFull, convertAmpFull, convertPhaseFull
 from collections import defaultdict
-from octet.HWEmulator.pdqSpline import pdq_spline
 import numpy as np
-from octet.HWEmulator.URAM import URAM, URAMException, GLUT, PLUT, SLUT, GADDRW, PADDRW, SADDRW
+from bytecode.binaryConversion import convertFreqFull, convertPhaseFull, convertAmpFull, mapFromBytes
+from bytecode.encodingParameters import PLUT_BYTECNT_OFFSET, DMA_MUX_OFFSET, GSEQ_BYTECNT_OFFSET, MODTYPE_LSB, \
+    SPLSHIFT_LSB, PROG_MODE_OFFSET, WAIT_TRIG_LSB, OUTPUT_EN_LSB, GLUT_BYTECNT_OFFSET, SLUT_BYTECNT_OFFSET
+from emulator.URAM import PADDRW, SADDRW, GLUT, SLUT, PLUT, GADDRW
+from emulator.pdqSpline import pdq_spline
+from utilities.parameters import CLKPERIOD, CLOCK_FREQUENCY
 
 tree = lambda: defaultdict(tree)
+
+mdr = tree()
 
 def convertPhaseBytesToReal(data):
     return data/(2**40-1)*360.0
@@ -177,32 +178,3 @@ def DecodeWord(raw_data, master_data_record, sequence_mode=False):
     return master_data_record
 
 
-mdr = tree()
-if __name__ == '__main__':
-    import matplotlib.pyplot as plt
-
-    pulse_data = pulse(3, 9.23e-6,
-                       freq0=[42.43, 123, 32, 32],
-                       amp0=(0, 10, 30, 50, 30, 10, 0),
-                       phase0=81,
-                       freq1=(0, 140, 190, 120, 155, 75, 0),
-                       phase1=[122, 70, 10, 2],
-                       amp1=45,
-                       framerot0=(20, 56, 280),
-                       framerot1=(1, 10, 25, 80),
-                       bypass=True)
-
-    for pd in pulse_data:
-        DecodeWord(pd, master_data_record=mdr)
-
-    print(mdr)
-    f, axl = plt.subplots(4, 2, sharex=True)
-    for i in range(4):
-        for j in range(2):
-            axl[i][j].set_ylabel(mod_type_dict[i + j * 4]['name'])
-            axl[i][j].step(mdr[3][i + j * 4]['time'], mdr[3][i + j * 4]['data'], where='post')
-    plt.show(block=True)
-
-print(GLUT)
-print(SLUT)
-print(PLUT)
