@@ -5,6 +5,13 @@ from IR.ast_utilities import merge_slice_lists, is_total_gate, get_gate_data, no
 from utilities.datatypes import Loop
 from utilities.exceptions import CircuitCompilerException
 
+
+def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):
+    """Convert a Circuit into a list of GateSlice objects."""
+    visitor = CircuitConstructorVisitor(pulse_definition, num_channels)
+    return visitor.visit(circuit)
+
+
 class CircuitConstructorVisitor(Visitor):
     """Convert a Circuit into a list of GateSlice objects."""
 
@@ -70,12 +77,6 @@ class CircuitConstructorVisitor(Visitor):
         by its position that this is a qubit index and not an integer."""
         _, index = qubit.resolve_qubit()
         return index
-
-
-def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):
-    """Convert a Circuit into a list of GateSlice objects."""
-    visitor = CircuitConstructorVisitor(pulse_definition, num_channels)
-    return visitor.visit(circuit)
 
 
 
