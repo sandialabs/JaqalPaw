@@ -1,17 +1,3 @@
-To clone the codebase, make sure to add the `--recurse` flag to the clone operation:
-
-```
-git clone --recurse git@gitlab.sandia.gov:/jaqal/jaqalpaw.git JaqalPaw/
-```
-
-If you fail to add the recurse flag initially, you can subsequently clone the submodule by running
-
-```
-git submodule update --init
-```
-
-to populate the Jaqal directory.
-
 # Running The Emulator
 
 For the initial version, simply run the top-level file `main.py`. This method bypasses some of the preprocessor steps for identifying the target gate pulse definition class, so this must be inserted manually and an instance of the class is directly imported and passed in via the `pulse_definition` keyword argument.

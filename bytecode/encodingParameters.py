@@ -1,22 +1,5 @@
-CLOCK_FREQUENCY = 819.25e6
-
-MAXFREQ = 500.0
-MAXAMP = 100.0
-
 ENDIANNESS = 'little'
 MAXLEN = 256//8
-
-DDSLUT = {0:(0,0),
-          1:(0,1),
-          2:(0,2),
-          3:(0,3),
-          4:(1,0),
-          5:(1,1),
-          6:(1,2),
-          7:(1,3)}
-
-CLKFREQ = 409625000
-CLKPERIOD = 1/CLKFREQ
 
 GLUTW = 6
 SLUTW = 12

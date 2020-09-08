@@ -1,16 +1,10 @@
-from octet.intermediateRepresentations import CircuitCompilerException
-from octet.encodingParameters import ENDIANNESS, DMA_MUX_OFFSET, PROGPLUT, PROGSLUT, PROGGLUT, PROG_MODE_OFFSET, \
+from utilities.exceptions import CircuitCompilerException
+from bytecode.encodingParameters import DMA_MUX_OFFSET, PROGPLUT, PROGSLUT, PROGGLUT, PROG_MODE_OFFSET, \
                                      PLUTW, SLUTW, GLUTW, SLUT_BYTECNT, GLUT_BYTECNT, GSEQ_BYTECNT, \
                                      PLUT_BYTECNT_OFFSET, SLUT_BYTECNT_OFFSET, GLUT_BYTECNT_OFFSET, \
                                      GSEQ_BYTECNT_OFFSET, GSEQ_ENABLE_OFFSET
 
-
-def bytes2int(b):
-    return int.from_bytes(b, byteorder=ENDIANNESS, signed=False)
-
-
-def int2bytes(d):
-    return d.to_bytes(32, byteorder=ENDIANNESS, signed=False)
+from bytecode.binaryConversion import int2bytes, bytes2int
 
 
 def address_is_invalid(addr, allowed_address_bits):

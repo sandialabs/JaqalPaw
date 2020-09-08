@@ -8,8 +8,10 @@ from jaqalpaq.core import Register
 from jaqalpaq.core.circuitbuilder import build
 from jaqalpaq.generator import generate_jaqal_program
 
-from octet.jaqalCompiler import CircuitCompiler
+#from octet.jaqalCompiler import CircuitCompiler
 from benchmark.benchmark import Benchmark, run_benchmarks, profile_benchmarks
+
+from compiler.jaqalCompiler import CircuitCompiler
 
 
 class ManyGates(Benchmark):

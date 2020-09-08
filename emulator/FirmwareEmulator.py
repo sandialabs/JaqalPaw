@@ -1,8 +1,8 @@
-from octet.HWEmulator.URAM import *
-from octet.HWEmulator.Arbiters import *
+from emulator.URAM import *
+from emulator.Arbiters import *
 import numpy as np
 
-from octet.HWEmulator.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict#, tree
+#from emulator.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict#, tree
 #master_data_record = {c: {d:{'time':copy.copy([0]), 'data':copy.copy([0])} for d in range(8)} for c in range(8)}
 
 async def FirmwareEmulator(data_list, num_channels=8, num_dtypes=8, master_data_record=None):
@@ -193,7 +193,7 @@ def printMetadataOutput(input_bytes):
                 print(deltastr)
 
 def plotOctetEmulatorOutput(ret, compare_lut_to_bypass=False, num_plots=8):
-    from octet.HWEmulator.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict#, tree
+    from emulator.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict#, tree
     #from HardwareElements.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict, tree
     import matplotlib.pyplot as plt
     import matplotlib.ticker as tic
