@@ -1,9 +1,9 @@
 import time
 import asyncio
 
-from bytecode.encodingParameters import CLR_FRAME_LSB
-from .URAM import GADDRW, SADDRW, PADDRW, GLUT, SLUT, PLUT, URAM
-from .ByteDecoding import *
+from bytecode.encoding_parameters import CLR_FRAME_LSB
+from .uram import GADDRW, SADDRW, PADDRW, GLUT, SLUT, PLUT, URAM
+from .byte_decoding import *
 import copy
 
 
@@ -14,7 +14,7 @@ def construct_fifos(num_spline_fifos=8, num_channels=8, spline_fifo_depth=4, gat
     return spline_fifos, gseq_fifos, dma_queue
 
 
-async def DMAArbiter(name, queue, data_output_queues):
+async def DMA_arbiter(name, queue, data_output_queues):
     """Send data to the correct channel (or gate sequencer input FIFO) based on metadata"""
     while True:
         raw_data = await queue.get()
@@ -24,7 +24,7 @@ async def DMAArbiter(name, queue, data_output_queues):
         queue.task_done()
 
 
-async def GateSeqArbiter(name, queue, data_output_queues):
+async def gate_seq_arbiter(name, queue, data_output_queues):
     """Performs the same functions as the hardware GateSequencer IP cores.
        Input words are 256 bits, and are parsed and treated accordingly depending on the
        metadata tags in the raw data in order to program LUTs or run gate sequences etc...
@@ -37,19 +37,19 @@ async def GateSeqArbiter(name, queue, data_output_queues):
         if prog_mode == 0b111:
             await data_output_queues[mod_type].put(raw_data)
         elif prog_mode == 0b001:
-            parseGLUTProgData(data)
+            parse_GLUT_prog_data(data)
         elif prog_mode == 0b010:
-            parseSLUTProgData(data)
+            parse_SLUT_prog_data(data)
         elif prog_mode == 0b011:
-            parsePLUTProgData(raw_data)
+            parse_PLUT_prog_data(raw_data)
         elif prog_mode == 0b100 or prog_mode == 0b101 or prog_mode == 0b110:
-            for gs_data in parseGSeqData(data):
+            for gs_data in parse_gate_seq_data(data):
                 new_mod_type = (int.from_bytes(gs_data, byteorder='little', signed=False) >> (MODTYPE_LSB)) & 0b111
                 await data_output_queues[new_mod_type].put(gs_data)
         queue.task_done()
 
 
-async def SplineEngine(name, queue, time_list, data_list, waittrig_list, enablemask_list):
+async def spline_engine(name, queue, time_list, data_list, waittrig_list, enablemask_list):
     """Converts the spline coefficients to a format that can be passed into a SplineEngine emulator,
        which generates the corresponding output and stores the data in time_list and data_list for
        plotting and/or inspecting the data"""
@@ -62,10 +62,10 @@ async def SplineEngine(name, queue, time_list, data_list, waittrig_list, enablem
         shift = (data >> SPLSHIFT_LSB) & 0b11111
         channel = (data >> DMA_MUX_OFFSET) & 0b111
         reset_accum = (data >> CLR_FRAME_LSB) & 0b1
-        dur, U0, U1, U2, U3 = parseBypassData(raw_data)
+        dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
         # Convert binary values to real-unit equivalents for monitoring
         #dur += TIMECORR+0#+4
-        dur_real = convertTimeFromClockCycles(dur)
+        dur_real = convert_time_from_clock_cycles(dur)
         U0_real = mod_type_dict[mod_type]['realConvFunc'](U0)
         U1_real = mod_type_dict[mod_type]['realConvFunc'](U1)
         U2_real = mod_type_dict[mod_type]['realConvFunc'](U2)

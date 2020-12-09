@@ -1,26 +1,26 @@
 from utilities.exceptions import CircuitCompilerException
-from bytecode.encodingParameters import DMA_MUX_OFFSET, PROGPLUT, PROGSLUT, PROGGLUT, PROG_MODE_OFFSET, \
+from bytecode.encoding_parameters import DMA_MUX_OFFSET, PROGPLUT, PROGSLUT, PROGGLUT, PROG_MODE_OFFSET, \
                                      PLUTW, SLUTW, GLUTW, SLUT_BYTECNT, GLUT_BYTECNT, GSEQ_BYTECNT, \
                                      PLUT_BYTECNT_OFFSET, SLUT_BYTECNT_OFFSET, GLUT_BYTECNT_OFFSET, \
                                      GSEQ_BYTECNT_OFFSET, GSEQ_ENABLE_OFFSET
 
-from bytecode.binaryConversion import int2bytes, bytes2int
+from bytecode.binary_conversion import int_to_bytes, bytes_to_int
 
 
 def address_is_invalid(addr, allowed_address_bits):
     return addr & (2**allowed_address_bits-1) != addr
 
 
-def generateGatePulseSequence(gateList, mapping):
+def generate_gate_pulse_sequence(gateList, mapping):
     """Construct series of address sequences to be
        packed linearly into sequence LUT"""
-    addrSequence = []
+    addr_sequence = []
     for g in gateList:
-        addrSequence.append(mapping[g])
-    return addrSequence
+        addr_sequence.append(mapping[g])
+    return addr_sequence
 
 
-def generateGateAddrRangeLUT(FullGateList):
+def generate_gate_addr_range_LUT(FullGateList):
     """Create dictionaries that contain the raw data and addresses
        that are used to program the GLUT and SLUT, the IRGLUT contains
        and intermediate representation for inspection/debugging"""
@@ -39,24 +39,24 @@ def generateGateAddrRangeLUT(FullGateList):
     return IRGLUT, SLUT, GLUT
 
 
-def programPLUT(lut,ch=0):
+def program_PLUT(lut,ch=0):
     """Generate programming data for the PLUT"""
-    plutPROGList = []
+    plut_PROG_list = []
     for data, addr in lut.items():
         if address_is_invalid(addr, PLUTW):
             raise CircuitCompilerException(f"PLUT programming error, address {addr} ({bin(addr)}) "
                                            f"exceeds maximum width of {PLUTW}")
-        intdata = bytes2int(data)
+        intdata = bytes_to_int(data)
         intdata |= (ch & 0b111) << DMA_MUX_OFFSET
         intdata |= PROGPLUT << PROG_MODE_OFFSET
         intdata |= addr << PLUT_BYTECNT_OFFSET
-        plutPROGList.append(int2bytes(intdata))
-    return plutPROGList
+        plut_PROG_list.append(int_to_bytes(intdata))
+    return plut_PROG_list
 
 
-def programSLUT(lut, ch=0):
+def program_SLUT(lut, ch=0):
     """Generate programming data for the SLUT"""
-    slutPROGList = []
+    slut_PROG_list = []
     current_byte = 0
     byte_count = 0
     BYTELIM = SLUT_BYTECNT
@@ -68,7 +68,7 @@ def programSLUT(lut, ch=0):
             current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
             current_byte |= PROGSLUT << PROG_MODE_OFFSET
             current_byte |= BYTELIM << SLUT_BYTECNT_OFFSET
-            slutPROGList.append(int2bytes(current_byte))
+            slut_PROG_list.append(int_to_bytes(current_byte))
             current_byte = 0
             byte_count = 0
         current_byte <<= SLUTW+PLUTW
@@ -77,13 +77,13 @@ def programSLUT(lut, ch=0):
     current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
     current_byte |= PROGSLUT << PROG_MODE_OFFSET
     current_byte |= byte_count << SLUT_BYTECNT_OFFSET
-    slutPROGList.append(int2bytes(current_byte))
-    return slutPROGList
+    slut_PROG_list.append(int_to_bytes(current_byte))
+    return slut_PROG_list
 
 
-def programGLUT(lut, ch=0):
+def program_GLUT(lut, ch=0):
     """Generate programming data for the GLUT"""
-    glutPROGList = []
+    glut_PROG_list = []
     current_byte = 0
     byte_count = 0
     BYTELIM = GLUT_BYTECNT
@@ -95,7 +95,7 @@ def programGLUT(lut, ch=0):
             current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
             current_byte |= PROGGLUT << PROG_MODE_OFFSET
             current_byte |= byte_count << GLUT_BYTECNT_OFFSET
-            glutPROGList.append(int2bytes(current_byte))
+            glut_PROG_list.append(int_to_bytes(current_byte))
             current_byte = 0
             byte_count = 0
         current_byte <<= 2*SLUTW+GLUTW
@@ -104,11 +104,11 @@ def programGLUT(lut, ch=0):
     current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
     current_byte |= PROGGLUT << PROG_MODE_OFFSET
     current_byte |= byte_count << GLUT_BYTECNT_OFFSET
-    glutPROGList.append(int2bytes(current_byte))
-    return glutPROGList
+    glut_PROG_list.append(int_to_bytes(current_byte))
+    return glut_PROG_list
 
 
-def gateSequenceBytes(glist, ch=0):
+def gate_sequence_bytes(glist, ch=0):
     """Generate gate sequence data that is input into the LUT module"""
     gseq = []
     current_byte = 0
@@ -119,7 +119,7 @@ def gateSequenceBytes(glist, ch=0):
             current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
             current_byte |= 1 << GSEQ_ENABLE_OFFSET
             current_byte |= BYTELIM << GSEQ_BYTECNT_OFFSET
-            gseq.append(int2bytes(current_byte))
+            gseq.append(int_to_bytes(current_byte))
             current_byte = 0
             byte_count = 0
         current_byte |= g << (GLUTW*byte_count)
@@ -127,6 +127,6 @@ def gateSequenceBytes(glist, ch=0):
     current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
     current_byte |= 1 << GSEQ_ENABLE_OFFSET
     current_byte |= byte_count << GSEQ_BYTECNT_OFFSET
-    gseq.append(int2bytes(current_byte))
+    gseq.append(int_to_bytes(current_byte))
     return gseq
 

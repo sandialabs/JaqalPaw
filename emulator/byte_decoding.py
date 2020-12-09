@@ -1,41 +1,41 @@
 from collections import defaultdict
 import numpy as np
-from bytecode.binaryConversion import convertFreqFull, convertPhaseFull, convertAmpFull, mapFromBytes
-from bytecode.encodingParameters import PLUT_BYTECNT_OFFSET, DMA_MUX_OFFSET, GSEQ_BYTECNT_OFFSET, MODTYPE_LSB, \
+from bytecode.binary_conversion import convert_freq_full, convert_phase_full, convert_amp_full, map_from_bytes
+from bytecode.encoding_parameters import PLUT_BYTECNT_OFFSET, DMA_MUX_OFFSET, GSEQ_BYTECNT_OFFSET, MODTYPE_LSB, \
     SPLSHIFT_LSB, PROG_MODE_OFFSET, WAIT_TRIG_LSB, OUTPUT_EN_LSB, GLUT_BYTECNT_OFFSET, SLUT_BYTECNT_OFFSET
-from emulator.URAM import PADDRW, SADDRW, GLUT, SLUT, PLUT, GADDRW
-from emulator.pdqSpline import pdq_spline
+from emulator.uram import PADDRW, SADDRW, GLUT, SLUT, PLUT, GADDRW
+from emulator.pdq_spline import pdq_spline
 from utilities.parameters import CLKPERIOD, CLOCK_FREQUENCY
 
 tree = lambda: defaultdict(tree)
 
 mdr = tree()
 
-def convertPhaseBytesToReal(data):
+def convert_phase_bytes_to_real(data):
     return data/(2**40-1)*360.0
 
-def convertFreqBytesToReal(data):
+def convert_freq_bytes_to_real(data):
     return data/(2**40-1)*CLOCK_FREQUENCY/1e6
 
-def convertAmpBytesToReal(data):
+def convert_amp_bytes_to_real(data):
     return (int(data)>>23)/(2**16-1)*200.0
 
-def convertTimeFromClockCycles(data):
+def convert_time_from_clock_cycles(data):
     return data*CLKPERIOD
 
 mode_enum = { 'run': 0, 'bypass': 1, 'prog_plut': 2, 'prog_slut': 3, 'prog_glut': 4, None: None}
 mode_lut = {v:k for k,v in mode_enum.items()}
-mod_type_dict = {0b000: {'name': 'f0', 'machineConvFunc': convertFreqFull,  'realConvFunc': convertFreqBytesToReal},
-                 0b001: {'name': 'a0', 'machineConvFunc': convertAmpFull,   'realConvFunc': convertAmpBytesToReal},
-                 0b010: {'name': 'p0', 'machineConvFunc': convertPhaseFull, 'realConvFunc': convertPhaseBytesToReal},
-                 0b011: {'name': 'f1', 'machineConvFunc': convertFreqFull,  'realConvFunc': convertFreqBytesToReal},
-                 0b100: {'name': 'a1', 'machineConvFunc': convertAmpFull,   'realConvFunc': convertAmpBytesToReal},
-                 0b101: {'name': 'p1', 'machineConvFunc': convertPhaseFull, 'realConvFunc': convertPhaseBytesToReal},
-                 0b110: {'name': 'z0', 'machineConvFunc': convertPhaseFull, 'realConvFunc': convertPhaseBytesToReal},
-                 0b111: {'name': 'z1', 'machineConvFunc': convertPhaseFull, 'realConvFunc': convertPhaseBytesToReal},
+mod_type_dict = {0b000: {'name': 'f0', 'machineConvFunc': convert_freq_full,  'realConvFunc': convert_freq_bytes_to_real},
+                 0b001: {'name': 'a0', 'machineConvFunc': convert_amp_full,   'realConvFunc': convert_amp_bytes_to_real},
+                 0b010: {'name': 'p0', 'machineConvFunc': convert_phase_full, 'realConvFunc': convert_phase_bytes_to_real},
+                 0b011: {'name': 'f1', 'machineConvFunc': convert_freq_full,  'realConvFunc': convert_freq_bytes_to_real},
+                 0b100: {'name': 'a1', 'machineConvFunc': convert_amp_full,   'realConvFunc': convert_amp_bytes_to_real},
+                 0b101: {'name': 'p1', 'machineConvFunc': convert_phase_full, 'realConvFunc': convert_phase_bytes_to_real},
+                 0b110: {'name': 'z0', 'machineConvFunc': convert_phase_full, 'realConvFunc': convert_phase_bytes_to_real},
+                 0b111: {'name': 'z1', 'machineConvFunc': convert_phase_full, 'realConvFunc': convert_phase_bytes_to_real},
                  }
 
-def parseGLUTProgData(data):
+def parse_GLUT_prog_data(data):
     """Program GLUT with input data word"""
     nwords = (data>>GLUT_BYTECNT_OFFSET)&0b11111
     channel = (data >> (DMA_MUX_OFFSET)) & 0b111
@@ -45,7 +45,7 @@ def parseGLUTProgData(data):
         glut_addr = (sdata>>(2*SADDRW))&(2**GADDRW-1)
         GLUT[channel][glut_addr] = glut_data
 
-def parseSLUTProgData(data):
+def parse_SLUT_prog_data(data):
     """Program SLUT with input data word"""
     nwords = (data>>SLUT_BYTECNT_OFFSET)&0b11111
     channel = (data >> DMA_MUX_OFFSET) & 0b111
@@ -55,14 +55,14 @@ def parseSLUTProgData(data):
         slut_addr = (sdata>>PADDRW)&(2**SADDRW-1)
         SLUT[channel][slut_addr] = slut_data
 
-def parsePLUTProgData(data):
+def parse_PLUT_prog_data(data):
     """Program PLUT with input data word"""
     newdata = int.from_bytes(data, byteorder='little', signed=False)
     plut_addr = (newdata >> PLUT_BYTECNT_OFFSET) & (2**PADDRW-1)
     channel = (newdata >> DMA_MUX_OFFSET) & 0b111
     PLUT[channel][plut_addr] = data
 
-def iterateGLUTBounds(gid, channel):
+def iterate_GLUT_bounds(gid, channel):
     """Get all PLUT data for an individual gate"""
     bounds_bytes = GLUT[channel][gid]
     start = bounds_bytes & (2**SADDRW-1)
@@ -70,7 +70,7 @@ def iterateGLUTBounds(gid, channel):
     for sid in range(start,stop+1):
         yield PLUT[channel][SLUT[channel][sid]]
 
-def parseGSeqData(data):
+def parse_gate_seq_data(data):
     """Get sequence of gates to run from input data"""
     prog_byte_cnt = (data >> GSEQ_BYTECNT_OFFSET) & 0b111111
     channel = (data >> DMA_MUX_OFFSET) & 0b111
@@ -81,17 +81,17 @@ def parseGSeqData(data):
         gid = newdata & (2**GADDRW-1)
         newdata >>= GADDRW
         gidlist.append(gid)
-        for plut_data in iterateGLUTBounds(gid, channel):
+        for plut_data in iterate_GLUT_bounds(gid, channel):
             plut_list.append(plut_data)
     print(f"gid list {channel}: {gidlist}")
     return plut_list
 
-def parseBypassData(data):
+def parse_bypass_data(data):
     """Return parameters for a raw data word"""
-    U0, U1, U2, U3, dur = mapFromBytes(data)
+    U0, U1, U2, U3, dur = map_from_bytes(data)
     return dur, U0, U1, U2, U3
 
-def DecodeWord(raw_data, master_data_record, sequence_mode=False):
+def decode_word(raw_data, master_data_record, sequence_mode=False):
     """This function essentially acts like the data path from DMA to the spline engine output.
        Input words are 256 bits, and are parsed and treated accordingly depending on the
        metadata tags in the raw data in order to program LUTs or run gate sequences etc...
@@ -108,29 +108,29 @@ def DecodeWord(raw_data, master_data_record, sequence_mode=False):
     mode =None
     if prog_mode == 0b111 or sequence_mode:
         mode = mode_enum['bypass']
-        dur, U0, U1, U2, U3 = parseBypassData(raw_data)
+        dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
     elif prog_mode == 0b001:
         prog_byte_cnt = (data >> GLUT_BYTECNT_OFFSET) & 0b11111111
         mode = mode_enum['prog_glut']
-        parseGLUTProgData(data)
+        parse_GLUT_prog_data(data)
     elif prog_mode == 0b010:
         prog_byte_cnt = (data >> SLUT_BYTECNT_OFFSET) & 0b11111111
         mode = mode_enum['prog_slut']
-        parseSLUTProgData(data)
+        parse_SLUT_prog_data(data)
     elif prog_mode == 0b011:
         prog_byte_cnt = (data >> PLUT_BYTECNT_OFFSET) & 0b11111111
         mode = mode_enum['prog_plut']
-        parsePLUTProgData(raw_data)
+        parse_PLUT_prog_data(raw_data)
     elif prog_mode == 0b100 or prog_mode == 0b101 or prog_mode == 0b110:
         prog_byte_cnt = (data >> GSEQ_BYTECNT_OFFSET) & 0b11111111
         mode = mode_enum['run']
-        for gs_data in parseGSeqData(data):
-            master_data_record = DecodeWord(gs_data, master_data_record, sequence_mode=True)
+        for gs_data in parse_gate_seq_data(data):
+            master_data_record = decode_word(gs_data, master_data_record, sequence_mode=True)
 
     print(f"channel: {channel}, mod type: {mod_type_dict[mod_type]['name']}, mode: {mode_lut[mode]}, shift: {shift}, prog byte count: {prog_byte_cnt}")
 
     if mode == mode_enum['bypass']:
-        dur_real = convertTimeFromClockCycles(dur)
+        dur_real = convert_time_from_clock_cycles(dur)
         U0_real = mod_type_dict[mod_type]['realConvFunc'](U0)
         U1_real = mod_type_dict[mod_type]['realConvFunc'](U1)
         U2_real = mod_type_dict[mod_type]['realConvFunc'](U2)
@@ -164,7 +164,7 @@ def DecodeWord(raw_data, master_data_record, sequence_mode=False):
             xdata = np.array(list(range(dur)))+1
             spline_data = pdq_spline(coeffs, [0], nsteps=dur)
             spline_data_real = list(map(mod_type_dict[mod_type]['realConvFunc'], spline_data))
-            xdata_real = list(map(lambda x: master_data_record[channel][mod_type]['time'][-1]+convertTimeFromClockCycles(x), xdata))
+            xdata_real = list(map(lambda x: master_data_record[channel][mod_type]['time'][-1]+convert_time_from_clock_cycles(x), xdata))
             master_data_record[channel][mod_type]['time'].extend(xdata_real)
             del master_data_record[channel][mod_type]['data'][-1]
             master_data_record[channel][mod_type]['data'].extend(spline_data_real)

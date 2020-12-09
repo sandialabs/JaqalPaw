@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from bytecode.pulseBinarization import pulse
+from bytecode.pulse_binarization import pulse
 from utilities.helper_functions import clock_cycles, make_list_hashable
 
 pd_cache = dict()
@@ -109,7 +109,7 @@ class PulseData:
     def duration(self):
         return self.dur
 
-    def bin2dur(self):
+    def bin_to_dur(self):
         if self.binary_data:
             print("B-----------------")
             bdatdict = defaultdict(int)

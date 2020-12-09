@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.interpolate import CubicSpline
-from bytecode.binaryConversion import convertFreqFull, convertAmpFull, convertPhaseFull, convertToBytes, mapToBytes
-from bytecode.encodingParameters import MAXLEN, DMA_MUX_OFFSET_LOC, OUTPUT_EN_LSB_LOC, FRQ_FB_EN_LSB_LOC, \
+from bytecode.binary_conversion import convert_freq_full, convert_amp_full, convert_phase_full, convert_to_bytes, map_to_bytes
+from bytecode.encoding_parameters import MAXLEN, DMA_MUX_OFFSET_LOC, OUTPUT_EN_LSB_LOC, FRQ_FB_EN_LSB_LOC, \
                                      WAIT_TRIG_LSB_LOC, CLR_FRAME_LSB_LOC, APPLY_EOF_LSB_LOC, SYNC_FLAG_LSB_LOC, \
                                      AMPMOD0, AMPMOD1, FRQMOD0, FRQMOD1, PHSMOD0, PHSMOD1, FRMROT0, FRMROT1
 
@@ -18,7 +18,7 @@ from bytecode.spline_mapping import cs_mapper_int, cs_mapper_int_auto_shift
 # ######################################################## #
 
 
-def applyMetadata(bytelist, modtype=0, bypass=False, waittrig=False, shift_len=0, sync_mask=0,
+def apply_metadata(bytelist, modtype=0, bypass=False, waittrig=False, shift_len=0, sync_mask=0,
                   enable_mask=0, fb_enable_mask=0, channel=0, apply_at_eof_mask=0, rst_frame_mask=0, ind=0):
     """Apply all metadata bits based on input flags, for splines, certain metadata bits are applied only
        with the first pulse such as waittrig, and rst_frame_mask"""
@@ -48,11 +48,11 @@ def applyMetadata(bytelist, modtype=0, bypass=False, waittrig=False, shift_len=0
         metadata |= waitbit | sync | clr_frame | apply_at_eof
     modbyte = (int(np.log2(modtype)) << (num_padbytes*8-3))
     metadata |= modbyte
-    padbytes = convertToBytes(metadata, bytenum=num_padbytes, signed=False)
+    padbytes = convert_to_bytes(metadata, bytenum=num_padbytes, signed=False)
     return bytelist + padbytes
 
 
-def generateBytes(coeffs, xdata, wait, modtype=0, shift_len=0, bypass=False, waittrig=False, sync_mask=0,
+def generate_bytes(coeffs, xdata, wait, modtype=0, shift_len=0, bypass=False, waittrig=False, sync_mask=0,
                   enable_mask=0, fb_enable_mask=0, channel=0, apply_at_eof_mask=0, rst_frame_mask=0):
     """Generate binary data for contiguous, spline pulses. Used when pulse()
        is called and a parameter is specified by a typle"""
@@ -68,8 +68,8 @@ def generateBytes(coeffs, xdata, wait, modtype=0, shift_len=0, bypass=False, wai
         v3 = int(coeffs[0, n])
         v4 = int(wait) if not isinstance(wait, list) else int(wait[n])
         shift_bits = shift_len if not isinstance(shift_len, list) else shift_len[n]
-        bytelist = mapToBytes([v0, v1, v2, v3, v4])
-        fullbytes = applyMetadata(bytelist, modtype=modtype, bypass=bypass, waittrig=waittrig,
+        bytelist = map_to_bytes([v0, v1, v2, v3, v4])
+        fullbytes = apply_metadata(bytelist, modtype=modtype, bypass=bypass, waittrig=waittrig,
                                   shift_len=shift_bits, sync_mask=sync_mask, enable_mask=enable_mask,
                                   fb_enable_mask=fb_enable_mask, channel=channel,
                                   apply_at_eof_mask=apply_at_eof_mask, rst_frame_mask=rst_frame_mask, ind=n)
@@ -78,7 +78,7 @@ def generateBytes(coeffs, xdata, wait, modtype=0, shift_len=0, bypass=False, wai
     return final_bytes, final_data
 
 
-def generatePulseBytes(coeffs, xdata, wait, modtype=0, bypass=False, waittrig=False, sync_mask=0,
+def generate_pulse_bytes(coeffs, xdata, wait, modtype=0, bypass=False, waittrig=False, sync_mask=0,
                        enable_mask=0, fb_enable_mask=0, channel=0, apply_at_eof_mask=0, rst_frame_mask=0):
     """Generate binary data for contiguous, discrete pulses. Used when pulse()
        is called and a parameter is specified by a list"""
@@ -90,8 +90,8 @@ def generatePulseBytes(coeffs, xdata, wait, modtype=0, bypass=False, waittrig=Fa
         v2 = 0
         v3 = 0
         v4 = int(wait) if not isinstance(wait, list) else int(wait[n])
-        bytelist = mapToBytes([v0, v1, v2, v3, v4])
-        fullbytes = applyMetadata(bytelist, modtype=modtype, bypass=bypass, waittrig=waittrig,
+        bytelist = map_to_bytes([v0, v1, v2, v3, v4])
+        fullbytes = apply_metadata(bytelist, modtype=modtype, bypass=bypass, waittrig=waittrig,
                                   sync_mask=sync_mask, enable_mask=enable_mask,
                                   fb_enable_mask=fb_enable_mask, channel=channel,
                                   apply_at_eof_mask=apply_at_eof_mask, rst_frame_mask=rst_frame_mask, ind=n)
@@ -100,11 +100,11 @@ def generatePulseBytes(coeffs, xdata, wait, modtype=0, bypass=False, waittrig=Fa
     return final_bytes, final_data
 
 
-def generateSplineBytes(xs, ys, nsteps, pulse_mode=False, modtype=0, shift_len=0, bypass=False, waittrig=False,
+def generate_spline_bytes(xs, ys, nsteps, pulse_mode=False, modtype=0, shift_len=0, bypass=False, waittrig=False,
                         sync_mask=0, enable_mask=0, fb_enable_mask=0, channel=0, apply_at_eof_mask=0, rst_frame_mask=0):
     """Generates spline coefficients, remaps them for a pdq spline and gets the corresponding byte data."""
     if pulse_mode:
-        outbytes, final_byte_list = generatePulseBytes(ys,
+        outbytes, final_byte_list = generate_pulse_bytes(ys,
                                                        xs[:],
                                                        nsteps,
                                                        modtype=modtype,
@@ -128,7 +128,7 @@ def generateSplineBytes(xs, ys, nsteps, pulse_mode=False, modtype=0, shift_len=0
         else:
             shift_len_fin = shift_len
             modified_coeff_table = cs_mapper_int(cs.c, nsteps=nsteps, shift_len=shift_len)
-        outbytes, final_byte_list = generateBytes(modified_coeff_table,
+        outbytes, final_byte_list = generate_bytes(modified_coeff_table,
                                                   xs[1:],
                                                   nsteps,
                                                   modtype=modtype,
@@ -144,13 +144,13 @@ def generateSplineBytes(xs, ys, nsteps, pulse_mode=False, modtype=0, shift_len=0
     return final_byte_list
 
 
-def generateSinglePulseBytes(coeff, wait, modtype=0, waittrig=False, bypass=False, sync_mask=0,
+def generate_single_pulse_bytes(coeff, wait, modtype=0, waittrig=False, bypass=False, sync_mask=0,
                              enable_mask=0, fb_enable_mask=0, channel=0, apply_at_eof_mask=0, rst_frame_mask=0):
     """prints out coefficient data with wait times in between.
        pow gives an overall scale factor to the data of 2**pow,
        and converts the coefficients to integers"""
-    bytelist = mapToBytes([int(coeff), 0, 0, 0, int(wait)])  # v0, v1, v2, v3, duration
-    final_bytes = applyMetadata(bytelist, modtype=modtype, bypass=bypass, waittrig=waittrig, sync_mask=sync_mask,
+    bytelist = map_to_bytes([int(coeff), 0, 0, 0, int(wait)])  # v0, v1, v2, v3, duration
+    final_bytes = apply_metadata(bytelist, modtype=modtype, bypass=bypass, waittrig=waittrig, sync_mask=sync_mask,
                                 enable_mask=enable_mask, fb_enable_mask=fb_enable_mask, channel=channel,
                                 apply_at_eof_mask=apply_at_eof_mask, rst_frame_mask=rst_frame_mask)
     return final_bytes, [final_bytes]
@@ -160,14 +160,14 @@ def pulse(DDS, dur, freq0=0, phase0=0, amp0=0, freq1=0, phase1=0, amp1=0, waittr
           fb_enable_mask=0, framerot0=0, framerot1=0, apply_at_eof_mask=0, rst_frame_mask=0, bypass=False):
     """Generates the binary data that needs to be uploaded to the chip from a set of input parameters"""
     DDS &= 0b111
-    mpdict = {'freq0':     {'modtype': FRQMOD0, 'data': freq0,     'convertFunc': convertFreqFull,  'enabled': True},
-              'freq1':     {'modtype': FRQMOD1, 'data': freq1,     'convertFunc': convertFreqFull,  'enabled': True},
-              'amp0':      {'modtype': AMPMOD0, 'data': amp0,      'convertFunc': convertAmpFull,   'enabled': True},
-              'amp1':      {'modtype': AMPMOD1, 'data': amp1,      'convertFunc': convertAmpFull,   'enabled': True},
-              'phase0':    {'modtype': PHSMOD0, 'data': phase0,    'convertFunc': convertPhaseFull, 'enabled': True},
-              'phase1':    {'modtype': PHSMOD1, 'data': phase1,    'convertFunc': convertPhaseFull, 'enabled': True},
-              'framerot0': {'modtype': FRMROT0, 'data': framerot0, 'convertFunc': convertPhaseFull, 'enabled': True},
-              'framerot1': {'modtype': FRMROT1, 'data': framerot1, 'convertFunc': convertPhaseFull, 'enabled': True}
+    mpdict = {'freq0':     {'modtype': FRQMOD0, 'data': freq0,     'convertFunc': convert_freq_full,  'enabled': True},
+              'freq1':     {'modtype': FRQMOD1, 'data': freq1,     'convertFunc': convert_freq_full,  'enabled': True},
+              'amp0':      {'modtype': AMPMOD0, 'data': amp0,      'convertFunc': convert_amp_full,   'enabled': True},
+              'amp1':      {'modtype': AMPMOD1, 'data': amp1,      'convertFunc': convert_amp_full,   'enabled': True},
+              'phase0':    {'modtype': PHSMOD0, 'data': phase0,    'convertFunc': convert_phase_full, 'enabled': True},
+              'phase1':    {'modtype': PHSMOD1, 'data': phase1,    'convertFunc': convert_phase_full, 'enabled': True},
+              'framerot0': {'modtype': FRMROT0, 'data': framerot0, 'convertFunc': convert_phase_full, 'enabled': True},
+              'framerot1': {'modtype': FRMROT1, 'data': framerot1, 'convertFunc': convert_phase_full, 'enabled': True}
               }
     modlist = ['freq0', 'amp0', 'phase0', 'freq1', 'amp1', 'phase1', 'framerot0', 'framerot1']
     bytelist = []
@@ -191,7 +191,7 @@ def pulse(DDS, dur, freq0=0, phase0=0, amp0=0, freq1=0, phase1=0, amp1=0, waittr
             if min(step_list) < 4:
                 raise Exception("Step size needs to be at least 4 clock cycles, or 10 ns!")
 
-            bytelist.append(generateSplineBytes(np.array(xdata),
+            bytelist.append(generate_spline_bytes(np.array(xdata),
                                                 np.array(ydata),
                                                 step_list,
                                                 pulse_mode=pulsemode,
@@ -206,7 +206,7 @@ def pulse(DDS, dur, freq0=0, phase0=0, amp0=0, freq1=0, phase1=0, amp1=0, waittr
                                                 rst_frame_mask=rst_frame_mask,
                                                 channel=DDS))
         else:
-            lbytes, _ = generateSinglePulseBytes(mpdict[modt]['convertFunc'](delist(mpdict[modt]['data'])),
+            lbytes, _ = generate_single_pulse_bytes(mpdict[modt]['convertFunc'](delist(mpdict[modt]['data'])),
                                                  dur,
                                                  modtype=mpdict[modt]['modtype'],
                                                  waittrig=waittrig,

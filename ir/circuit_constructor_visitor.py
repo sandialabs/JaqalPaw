@@ -1,7 +1,7 @@
 from jaqalpaq.core.algorithm.visitor import Visitor
 
-from IR.GateSlice import GateSlice
-from IR.ast_utilities import merge_slice_lists, is_total_gate, get_gate_data, normalize_number
+from ir.gate_slice import GateSlice
+from ir.ast_utilities import merge_slice_lists, is_total_gate, get_gate_data, normalize_number
 from utilities.datatypes import Loop
 from utilities.exceptions import CircuitCompilerException
 

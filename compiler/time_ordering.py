@@ -1,7 +1,7 @@
 from collections import defaultdict
 
-from bytecode.binaryConversion import mapFromBytes
-from bytecode.encodingParameters import MODTYPE_LSB, DMA_MUX_OFFSET
+from bytecode.binary_conversion import map_from_bytes
+from bytecode.encoding_parameters import MODTYPE_LSB, DMA_MUX_OFFSET
 
 # ######################################################## #
 # --------------- Time Ordering Functions ---------------- #
@@ -36,7 +36,7 @@ def decode_word(word):
     data = int.from_bytes(word, byteorder='little', signed=False)
     mod_type = (data >> MODTYPE_LSB) & 0b111
     channel = (data >> DMA_MUX_OFFSET) & 0b111
-    U0, U1, U2, U3, dur = mapFromBytes(word)
+    U0, U1, U2, U3, dur = map_from_bytes(word)
     return channel, mod_type, dur
 
 
