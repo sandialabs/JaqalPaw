@@ -78,5 +78,9 @@ class CircuitConstructorVisitor(Visitor):
         _, index = qubit.resolve_qubit()
         return index
 
+    def visit_Constant(self, const):
+        """Resolve the constant to a numeric value and return that."""
+        ret = normalize_number(const.resolve_value())
+        return ret
 
 
