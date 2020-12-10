@@ -1,6 +1,6 @@
 from copy import copy
 
-from IR.PulseData import PulseData
+from ir.pulse_data import PulseData
 from utilities.datatypes import Spline, Discrete
 
 

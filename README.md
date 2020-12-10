@@ -2,7 +2,7 @@
 
 For the initial version, simply run the top-level file `main.py`. This method bypasses some of the preprocessor steps for identifying the target gate pulse definition class, so this must be inserted manually and an instance of the class is directly imported and passed in via the `pulse_definition` keyword argument.
 
-The default code uses the gate pulse definitions in the top-level `PulseDefinitions.py` file, and executes the gates specified in the top-level `test.jql` Jaqal file. Thus, modifications to the code should be reflected either in these files, or new files that are subsequently imported/identified in `main.py`.
+The default code uses the gate pulse definitions in the top-level `pulse_definitions.py` file, and executes the gates specified in the top-level `test.jql` Jaqal file. Thus, modifications to the code should be reflected either in these files, or new files that are subsequently imported/identified in `main.py`.
 
 # Pulse Specification
 
@@ -47,13 +47,13 @@ PulseData(channel,
 Gates are defined at the pulse level in a python format that is referenced by the Jaqal file in the form of 
 
 ```
-from GatePulseFileName.GatePulseClassName usepulses *
+from gate_pulse_file_name.GatePulseClassName usepulses *
 ```
 
 with optional relative  imports from subdirectories such as
 
 ```
-from SubDirectory1.SubDirectory2.GatePulseFileName.GatePulseClassName usepulses *
+from sub_directory_1.sub_directory_2.gate_pulse_file_name.GatePulseClassName usepulses *
 ```
 
 Class level definitions with type annotations are exposed to the main experimental control software, and typically provide hooks that allow us to override the variable's final value to perform scans or pass in the latest calibrated values. The annotation type currently has no effect, and thus can be any native python type, e.g. 
@@ -83,7 +83,7 @@ can be called in Jaqal as
 
 ```
 // Example header and declarations
-from GatePulseFileName.GatePulses usepulses *
+from gate_pulse_file_name.GatePulses usepulses *
 let pi 3.14159265
 register q[8]
 

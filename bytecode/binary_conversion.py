@@ -1,10 +1,10 @@
 from functools import reduce
 
-from bytecode.encodingParameters import ENDIANNESS
+from bytecode.encoding_parameters import ENDIANNESS
 from utilities.parameters import CLOCK_FREQUENCY, MAXAMP
 
 
-def convertToBytes(d, bytenum=5, signed=True):
+def convert_to_bytes(d, bytenum=5, signed=True):
     try:
         return d.to_bytes(bytenum, byteorder=ENDIANNESS, signed=signed)
     except OverflowError:
@@ -12,7 +12,7 @@ def convertToBytes(d, bytenum=5, signed=True):
         raise
 
 
-def mapToBytes(data,bytenum=5):
+def map_to_bytes(data,bytenum=5):
     try:
         return reduce(lambda x, y: x+y, [d.to_bytes(bytenum, byteorder=ENDIANNESS, signed=True) for d in data])
     except OverflowError:
@@ -20,15 +20,15 @@ def mapToBytes(data,bytenum=5):
         raise
 
 
-def mapFromBytes(d, bytenum=5):
+def map_from_bytes(d, bytenum=5):
     return [int.from_bytes(d[n*bytenum:n*bytenum+bytenum], byteorder=ENDIANNESS, signed=True) for n in range(bytenum)]
 
 
-def bytes2int(b):
+def bytes_to_int(b):
     return int.from_bytes(b, byteorder=ENDIANNESS, signed=False)
 
 
-def int2bytes(d):
+def int_to_bytes(d):
     return d.to_bytes(32, byteorder=ENDIANNESS, signed=False)
 
 
@@ -38,14 +38,14 @@ def signed_n_bit_map(x, n=40):
 
 
 
-def convertFreqFull(frqw):
+def convert_freq_full(frqw):
     """Converts to full 40 bit frequency word for
        packing into 256 bit spline data"""
     convf = int(frqw/CLOCK_FREQUENCY*(2**40-1))
     return convf
 
 
-def convertPhaseFull(phsw):
+def convert_phase_full(phsw):
     """Converts to full 40 bit frequency word for
        packing into 256 bit spline data"""
     if abs(phsw) >= 360.0:
@@ -58,7 +58,7 @@ def convertPhaseFull(phsw):
     return convf
 
 
-def convertAmpFull(ampw):
+def convert_amp_full(ampw):
     convf = int(ampw/MAXAMP*(2**16-1))
     fw1 = (convf << 23)
     return fw1

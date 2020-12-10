@@ -4,9 +4,9 @@ from jaqalpaq.parser import parse_jaqal_string
 from jaqalpaq.core.algorithm import expand_macros, fill_in_let
 import runpy
 
-from IR.CircuitConstructorVisitor import convert_circuit_to_gateslices
-from IR.PulseData import PulseData
-from IR.ast_utilities import get_let_constants
+from ir.circuit_constructor_visitor import convert_circuit_to_gateslices
+from ir.pulse_data import PulseData
+from ir.ast_utilities import get_let_constants
 from utilities.exceptions import CircuitCompilerException
 
 # ######################################################## #
