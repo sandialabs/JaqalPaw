@@ -2,10 +2,10 @@ from pathlib import Path
 from collections import defaultdict
 from itertools import zip_longest
 
-from IR.CircuitConstructor import CircuitConstructor
-from IR.GateSlice import GateSlice
-from IR.PulseData import PulseData
-from bytecode.LUTProgramming import programPLUT, programSLUT, programGLUT, gateSequenceBytes
+from ir.circuit_constructor import CircuitConstructor
+from ir.gate_slice import GateSlice
+from ir.pulse_data import PulseData
+from bytecode.lut_programming import program_PLUT, program_SLUT, program_GLUT, gate_sequence_bytes
 from compiler.time_ordering import timesort_bytelist
 from utilities.datatypes import Loop
 from utilities.exceptions import CircuitCompilerException
@@ -196,10 +196,10 @@ class CircuitCompiler(CircuitConstructor):
         self.GLUT_bin = defaultdict(list)
         self.GSEQ_bin = defaultdict(list)
         for ch in range(self.CHANNEL_NUM):
-            self.PLUT_bin[ch] = programPLUT({v:i for i,v in enumerate(self.PLUT_data[ch])}, ch)
-            self.MMAP_bin[ch] = programSLUT(self.MMAP_data[ch], ch)
-            self.GLUT_bin[ch] = programGLUT(self.GLUT_data[ch], ch)
-            self.GSEQ_bin[ch] = gateSequenceBytes(self.gate_sequence_ids[ch], ch)
+            self.PLUT_bin[ch] = program_PLUT({v:i for i,v in enumerate(self.PLUT_data[ch])}, ch)
+            self.MMAP_bin[ch] = program_SLUT(self.MMAP_data[ch], ch)
+            self.GLUT_bin[ch] = program_GLUT(self.GLUT_data[ch], ch)
+            self.GSEQ_bin[ch] = gate_sequence_bytes(self.gate_sequence_ids[ch], ch)
 
     def compile(self):
         """Compile the circuit, starting from parsing the jaqal file"""
@@ -310,7 +310,7 @@ class CircuitCompiler(CircuitConstructor):
         partial_GSEQ_bin = dict()
         for ch, gidlist in self.gate_sequence_ids.items():
             partial_gs_ids[ch] = get_tail_from_index(self.prepare_all_gids[ch], gidlist, ind)
-            partial_GSEQ_bin[ch] = gateSequenceBytes(partial_gs_ids[ch], ch)
+            partial_GSEQ_bin[ch] = gate_sequence_bytes(partial_gs_ids[ch], ch)
         return partial_GSEQ_bin
 
     def partial_sequence_bytecode(self, channel_mask=None, starting_index=0):

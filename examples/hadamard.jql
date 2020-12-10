@@ -1,4 +1,4 @@
-from PulseDefinitions.StandardGatePulses usepulses *
+from pulse_definitions.StandardGatePulses usepulses *
 
 register q[8]
 

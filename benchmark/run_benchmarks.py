@@ -11,7 +11,7 @@ from jaqalpaq.generator import generate_jaqal_program
 #from octet.jaqalCompiler import CircuitCompiler
 from benchmark.benchmark import Benchmark, run_benchmarks, profile_benchmarks
 
-from compiler.jaqalCompiler import CircuitCompiler
+from compiler.jaqal_compiler import CircuitCompiler
 
 
 class ManyGates(Benchmark):

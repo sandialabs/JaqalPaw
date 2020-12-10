@@ -1,7 +1,7 @@
 #from octet.HWEmulator.FirmwareEmulator import trigger_events, printMetadataOutput, plotOctetEmulatorOutput
 #from octet.jaqalCompiler import CircuitCompiler
-from compiler.jaqalCompiler import CircuitCompiler
-from emulator.FirmwareEmulator import plotOctetEmulatorOutput
+from compiler.jaqal_compiler import CircuitCompiler
+from emulator.firmware_emulator import plot_octet_emulator_output
 import time
 
 def flatten(code):
@@ -19,7 +19,7 @@ def emulate_jaqal_file(file):
     code = flatten(cc.bytecode(0xff))
     stop = time.time()
     print(f'time: {stop-start}')
-    # plotOctetEmulatorOutput(code)
+    # plot_octet_emulator_output(code)
 
 
 if __name__=='__main__':

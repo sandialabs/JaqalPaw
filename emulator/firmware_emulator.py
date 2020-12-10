@@ -1,13 +1,13 @@
-from emulator.URAM import *
-from emulator.Arbiters import *
+from emulator.uram import *
+from emulator.arbiters import *
 import numpy as np
 
-#from emulator.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict#, tree
+#from emulator.byte_decoding import decode_word, GLUT, SLUT, PLUT, mod_type_dict#, tree
 #master_data_record = {c: {d:{'time':copy.copy([0]), 'data':copy.copy([0])} for d in range(8)} for c in range(8)}
 
-async def FirmwareEmulator(data_list, num_channels=8, num_dtypes=8, master_data_record=None):
+async def firmware_emulator(data_list, num_channels=8, num_dtypes=8, master_data_record=None):
     r"""
-    FirmwareEmulator is the main function that encodes the pipeline structure in the hardware.
+    The firmware_emulator is the main function that encodes the pipeline structure in the hardware.
     Any hardware feature that stores data (such as DMA or FIFOs) are described by asyncio.Queue objects.
     DMA transfers put the data into the main pipeline, called DMA Queue and the data is subsequently consumed
     by lower level elements. Data passing through the DMA Queue is passed to 8 FIFOs corresponding to different
@@ -33,7 +33,7 @@ async def FirmwareEmulator(data_list, num_channels=8, num_dtypes=8, master_data_
     function and thus all Queues are defined within this function.
 
     In the hardware, spline engines will throttle the data based on the amount of time encoded into each data word. This
-    behavior is approximated by an asyncio.sleep() call towards the end of the SplineEngine() function, but should
+    behavior is approximated by an asyncio.sleep() call towards the end of the spline_engine() function, but should
     probably scale this time to get a more accurate measure of delays imposed by the spline engines due to the natural
     computation time needed to generate realistic output. In the hardware, the effective computational overhead leads
     to a natural latency that is constant across all spline engines and can be neglected.
@@ -42,11 +42,11 @@ async def FirmwareEmulator(data_list, num_channels=8, num_dtypes=8, master_data_
     the binary data sent to the RFSoC, and waits for all of the data to be consumed. Special functionality beyond that
     is handled by some of the other async functions:
 
-    DMAArbiter     : delegates data words to the correct channel based on those words' metadata
-    GateSeqArbiter : either encodes or decodes the LUTs and delegates any output data to the correct spline engine FIFO
-    SplineEngine   : consumes incoming data from its dedicated FIFO and reproduces the spline output
+    DMA_arbiter     : delegates data words to the correct channel based on those words' metadata
+    gate_seq_arbiter : either encodes or decodes the LUTs and delegates any output data to the correct spline engine FIFO
+    spline_engine   : consumes incoming data from its dedicated FIFO and reproduces the spline output
 
-    The SplineEngine also takes additional inputs which are (nearly) empty lists in the global master_data_record
+    The spline_engine also takes additional inputs which are (nearly) empty lists in the global master_data_record
     object that is used to store the spline engine output data for inspection.
 
     Note: some functionality has been put in place to more accurately emulate potential error cases such as starving
@@ -68,15 +68,15 @@ async def FirmwareEmulator(data_list, num_channels=8, num_dtypes=8, master_data_
 
     # generate fifo tasks
     tasks = []
-    task = asyncio.Task(DMAArbiter(f'DMAArbiter-{0}', dma_queue, gseq_fifos))
+    task = asyncio.Task(DMA_arbiter(f'DMA-arbiter-{0}', dma_queue, gseq_fifos))
     tasks.append(task)
     for nc in range(num_channels): # 8 gate sequencers, one per channel
-        task = asyncio.Task(GateSeqArbiter(f'GateSeqArbiter-ch{nc}', # name for bookkeeping purposes
+        task = asyncio.Task(gate_seq_arbiter(f'gate-seq-arbiter-ch{nc}', # name for bookkeeping purposes
                                            gseq_fifos[nc],           #
                                            spline_fifos[nc]))
         tasks.append(task)
         for nd in range(num_dtypes): # 64 spline engines, 8 per channel (4 parameters, 2 tones)
-            task = asyncio.Task(SplineEngine(f'spline-engine-ch{nc}-d{nd}',
+            task = asyncio.Task(spline_engine(f'spline-engine-ch{nc}-d{nd}',
                                              spline_fifos[nc][nd],
                                              master_data_record[nc][nd]['time'],  # x axis plot data
                                              master_data_record[nc][nd]['data'],  # y axis plot data
@@ -116,18 +116,18 @@ async def FirmwareEmulator(data_list, num_channels=8, num_dtypes=8, master_data_
 from collections import defaultdict
 tree = lambda: defaultdict(tree)
 
-def chunkDataDirect(data, chunksize=65536):
+def chunk_data_direct(data, chunksize=65536):
     chunks = len(data)
     chunk_size = 32 * chunksize
     return [data[i:i + chunk_size] for i in range(0, chunks, chunk_size)]
 
 def trigger_events(input_bytes):
     master_data_record = {c: {d:{'time':copy.copy([0]), 'data':copy.copy([0]), 'waittrig':copy.copy([0]), 'enablemask':copy.copy([0])} for d in range(8)} for c in range(8)}
-    retlist = chunkDataDirect(input_bytes, chunksize=1)
+    retlist = chunk_data_direct(input_bytes, chunksize=1)
 
     asyncio.set_event_loop(asyncio.new_event_loop())
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(FirmwareEmulator(retlist, num_channels=8, master_data_record=master_data_record))
+    loop.run_until_complete(firmware_emulator(retlist, num_channels=8, master_data_record=master_data_record))
     loop.close()
     ch_list = list()
     for chnm in range(8):
@@ -140,13 +140,13 @@ def trigger_events(input_bytes):
     return ch_list
 
 
-def printMetadataOutput(input_bytes):
+def print_metadata_output(input_bytes):
     master_data_record = {c: {d:{'time':copy.copy([0]), 'data':copy.copy([0]), 'waittrig':copy.copy([0]), 'enablemask':copy.copy([0])} for d in range(8)} for c in range(8)}
-    retlist = chunkDataDirect(input_bytes, chunksize=1)
+    retlist = chunk_data_direct(input_bytes, chunksize=1)
 
     asyncio.set_event_loop(asyncio.new_event_loop())
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(FirmwareEmulator(retlist, num_channels=8, master_data_record=master_data_record))
+    loop.run_until_complete(firmware_emulator(retlist, num_channels=8, master_data_record=master_data_record))
     loop.close()
     for chnm in range(8):
         for n in range(1): # wait trig masks apply to all parameters
@@ -192,18 +192,18 @@ def printMetadataOutput(input_bytes):
                 print(tstr)
                 print(deltastr)
 
-def plotOctetEmulatorOutput(ret, compare_lut_to_bypass=False, num_plots=8):
-    from emulator.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict#, tree
-    #from HardwareElements.ByteDecoding import DecodeWord, GLUT, SLUT, PLUT, mod_type_dict, tree
+def plot_octet_emulator_output(ret, compare_lut_to_bypass=False, num_plots=8):
+    from emulator.byte_decoding import decode_word, GLUT, SLUT, PLUT, mod_type_dict#, tree
+    #from hardware_elements.byte_decoding import decode_word, GLUT, SLUT, PLUT, mod_type_dict, tree
     import matplotlib.pyplot as plt
     import matplotlib.ticker as tic
     #import numpy as np
     master_data_record = {c: {d:{'time':copy.copy([0]), 'data':copy.copy([0]), 'waittrig':copy.copy([0]), 'enablemask':copy.copy([0])} for d in range(8)} for c in range(8)}
-    retlist = chunkDataDirect(ret, chunksize=1)
+    retlist = chunk_data_direct(ret, chunksize=1)
 
     asyncio.set_event_loop(asyncio.new_event_loop())
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(FirmwareEmulator(retlist, num_channels=num_plots, master_data_record=master_data_record))
+    loop.run_until_complete(firmware_emulator(retlist, num_channels=num_plots, master_data_record=master_data_record))
     loop.close()
 
     #if compare_lut_to_bypass:

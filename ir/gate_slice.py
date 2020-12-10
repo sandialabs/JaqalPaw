@@ -1,8 +1,8 @@
 from collections import defaultdict
 from copy import copy
 
-from IR.PulseData import PulseData
-from IR.padding import append_prepend_distribute
+from ir.pulse_data import PulseData
+from ir.padding import append_prepend_distribute
 from utilities.datatypes import ClockCycles
 from utilities.exceptions import CollisionException
 from utilities.helper_functions import real_time
@@ -111,7 +111,7 @@ class GateSlice:
                         dur_list.append(pd.duration)
                     else:
                         dur_list.append(pd.dur)
-                    pd.bin2dur()
+                    pd.bin_to_dur()
             if realtime:
                 print(f"Channel {k}; Total Duration: {real_time(ClockCycles(total_dur))}; Durations: {dur_list}")
             else:
