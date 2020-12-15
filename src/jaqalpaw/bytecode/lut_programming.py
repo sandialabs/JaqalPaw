@@ -1,10 +1,10 @@
-from utilities.exceptions import CircuitCompilerException
-from bytecode.encoding_parameters import DMA_MUX_OFFSET, PROGPLUT, PROGSLUT, PROGGLUT, PROG_MODE_OFFSET, \
+from jaqalpaw.utilities.exceptions import CircuitCompilerException
+from jaqalpaw.bytecode.encoding_parameters import DMA_MUX_OFFSET, PROGPLUT, PROGSLUT, PROGGLUT, PROG_MODE_OFFSET, \
                                      PLUTW, SLUTW, GLUTW, SLUT_BYTECNT, GLUT_BYTECNT, GSEQ_BYTECNT, \
                                      PLUT_BYTECNT_OFFSET, SLUT_BYTECNT_OFFSET, GLUT_BYTECNT_OFFSET, \
                                      GSEQ_BYTECNT_OFFSET, GSEQ_ENABLE_OFFSET
 
-from bytecode.binary_conversion import int_to_bytes, bytes_to_int
+from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
 
 
 def address_is_invalid(addr, allowed_address_bits):

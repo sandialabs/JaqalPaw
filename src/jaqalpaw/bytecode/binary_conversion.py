@@ -1,7 +1,7 @@
 from functools import reduce
 
-from bytecode.encoding_parameters import ENDIANNESS
-from utilities.parameters import CLOCK_FREQUENCY, MAXAMP
+from .encoding_parameters import ENDIANNESS
+from jaqalpaw.utilities.parameters import CLOCK_FREQUENCY, MAXAMP
 
 
 def convert_to_bytes(d, bytenum=5, signed=True):

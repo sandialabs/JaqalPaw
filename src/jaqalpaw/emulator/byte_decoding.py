@@ -1,11 +1,11 @@
 from collections import defaultdict
 import numpy as np
-from bytecode.binary_conversion import convert_freq_full, convert_phase_full, convert_amp_full, map_from_bytes
-from bytecode.encoding_parameters import PLUT_BYTECNT_OFFSET, DMA_MUX_OFFSET, GSEQ_BYTECNT_OFFSET, MODTYPE_LSB, \
+from jaqalpaw.bytecode.binary_conversion import convert_freq_full, convert_phase_full, convert_amp_full, map_from_bytes
+from jaqalpaw.bytecode.encoding_parameters import PLUT_BYTECNT_OFFSET, DMA_MUX_OFFSET, GSEQ_BYTECNT_OFFSET, MODTYPE_LSB, \
     SPLSHIFT_LSB, PROG_MODE_OFFSET, WAIT_TRIG_LSB, OUTPUT_EN_LSB, GLUT_BYTECNT_OFFSET, SLUT_BYTECNT_OFFSET
-from emulator.uram import PADDRW, SADDRW, GLUT, SLUT, PLUT, GADDRW
-from emulator.pdq_spline import pdq_spline
-from utilities.parameters import CLKPERIOD, CLOCK_FREQUENCY
+from .uram import PADDRW, SADDRW, GLUT, SLUT, PLUT, GADDRW
+from .pdq_spline import pdq_spline
+from jaqalpaw.utilities.parameters import CLKPERIOD, CLOCK_FREQUENCY
 
 tree = lambda: defaultdict(tree)
 

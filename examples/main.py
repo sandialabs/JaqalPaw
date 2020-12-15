@@ -1,7 +1,7 @@
 #from octet.HWEmulator.FirmwareEmulator import trigger_events, printMetadataOutput, plotOctetEmulatorOutput
 #from octet.jaqalCompiler import CircuitCompiler
-from compiler.jaqal_compiler import CircuitCompiler
-from emulator.firmware_emulator import plot_octet_emulator_output
+from jaqalpaw.compiler.jaqal_compiler import CircuitCompiler
+from jaqalpaw.emulator.firmware_emulator import plot_octet_emulator_output
 import time
 
 def flatten(code):

@@ -1,9 +1,9 @@
 from jaqalpaq.core.algorithm.visitor import Visitor
 
-from ir.gate_slice import GateSlice
-from ir.ast_utilities import merge_slice_lists, is_total_gate, get_gate_data, normalize_number
-from utilities.datatypes import Loop
-from utilities.exceptions import CircuitCompilerException
+from .gate_slice import GateSlice
+from .ast_utilities import merge_slice_lists, is_total_gate, get_gate_data, normalize_number
+from jaqalpaw.utilities.datatypes import Loop
+from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
 
 def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):

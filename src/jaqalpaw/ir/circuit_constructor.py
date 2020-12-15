@@ -4,10 +4,10 @@ from jaqalpaq.parser import parse_jaqal_string
 from jaqalpaq.core.algorithm import expand_macros, fill_in_let
 import runpy
 
-from ir.circuit_constructor_visitor import convert_circuit_to_gateslices
-from ir.pulse_data import PulseData
-from ir.ast_utilities import get_let_constants
-from utilities.exceptions import CircuitCompilerException
+from .circuit_constructor_visitor import convert_circuit_to_gateslices
+from .pulse_data import PulseData
+from .ast_utilities import get_let_constants
+from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
 # ######################################################## #
 # ------ Convert jaqal AST to GateSlice IR Layer --------- #

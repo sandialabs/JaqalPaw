@@ -1,7 +1,7 @@
 from collections import defaultdict
 
-from bytecode.pulse_binarization import pulse
-from utilities.helper_functions import clock_cycles, make_list_hashable
+from jaqalpaw.bytecode.pulse_binarization import pulse
+from jaqalpaw.utilities.helper_functions import clock_cycles, make_list_hashable
 
 pd_cache = dict()
 

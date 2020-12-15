@@ -1,7 +1,7 @@
 from copy import copy
 
-from ir.pulse_data import PulseData
-from utilities.datatypes import Spline, Discrete
+from .pulse_data import PulseData
+from jaqalpaw.utilities.datatypes import Spline, Discrete
 
 
 def append_prepend_distribute(ch, pdl, dur, apd=0):

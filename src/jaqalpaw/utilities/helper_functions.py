@@ -1,5 +1,5 @@
-from utilities.datatypes import ClockCycles, Discrete, Spline
-from utilities.parameters import CLKFREQ
+from .datatypes import ClockCycles, Discrete, Spline
+from .parameters import CLKFREQ
 
 
 def make_list_hashable(param):

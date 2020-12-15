@@ -3,8 +3,8 @@ import math
 from typing import List, NewType
 import numpy as np
 
-from ir.pulse_data import PulseData
-from utilities.exceptions import PulseException
+from jaqalpaw.ir.pulse_data import PulseData
+from jaqalpaw.utilities.exceptions import PulseException
 
 GLOBAL_BEAM_CHANNEL = 0
 

@@ -1,6 +1,6 @@
 from itertools import zip_longest
 
-from utilities.exceptions import CircuitCompilerException
+from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
 def get_let_constants(ast):
     """Return a list mapping let constant names to their numeric values."""

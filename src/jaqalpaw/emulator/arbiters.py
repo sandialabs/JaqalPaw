@@ -1,7 +1,7 @@
 import time
 import asyncio
 
-from bytecode.encoding_parameters import CLR_FRAME_LSB
+from jaqalpaw.bytecode.encoding_parameters import CLR_FRAME_LSB
 from .uram import GADDRW, SADDRW, PADDRW, GLUT, SLUT, PLUT, URAM
 from .byte_decoding import *
 import copy

@@ -1,7 +1,7 @@
 from collections import defaultdict
 
-from bytecode.binary_conversion import map_from_bytes
-from bytecode.encoding_parameters import MODTYPE_LSB, DMA_MUX_OFFSET
+from jaqalpaw.bytecode.binary_conversion import map_from_bytes
+from jaqalpaw.bytecode.encoding_parameters import MODTYPE_LSB, DMA_MUX_OFFSET
 
 # ######################################################## #
 # --------------- Time Ordering Functions ---------------- #

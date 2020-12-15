@@ -1,11 +1,11 @@
 from collections import defaultdict
 from copy import copy
 
-from ir.pulse_data import PulseData
-from ir.padding import append_prepend_distribute
-from utilities.datatypes import ClockCycles
-from utilities.exceptions import CollisionException
-from utilities.helper_functions import real_time
+from .pulse_data import PulseData
+from .padding import append_prepend_distribute
+from jaqalpaw.utilities.datatypes import ClockCycles
+from jaqalpaw.utilities.exceptions import CollisionException
+from jaqalpaw.utilities.helper_functions import real_time
 
 
 class GateSlice:

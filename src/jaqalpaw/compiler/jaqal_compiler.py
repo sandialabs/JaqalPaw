@@ -2,14 +2,14 @@ from pathlib import Path
 from collections import defaultdict
 from itertools import zip_longest
 
-from ir.circuit_constructor import CircuitConstructor
-from ir.gate_slice import GateSlice
-from ir.pulse_data import PulseData
-from bytecode.lut_programming import program_PLUT, program_SLUT, program_GLUT, gate_sequence_bytes
-from compiler.time_ordering import timesort_bytelist
-from utilities.datatypes import Loop
-from utilities.exceptions import CircuitCompilerException
-from utilities.helper_functions import clock_cycles
+from jaqalpaw.ir.circuit_constructor import CircuitConstructor
+from jaqalpaw.ir.gate_slice import GateSlice
+from jaqalpaw.ir.pulse_data import PulseData
+from jaqalpaw.bytecode.lut_programming import program_PLUT, program_SLUT, program_GLUT, gate_sequence_bytes
+from .time_ordering import timesort_bytelist
+from jaqalpaw.utilities.datatypes import Loop
+from jaqalpaw.utilities.exceptions import CircuitCompilerException
+from jaqalpaw.utilities.helper_functions import clock_cycles
 
 flatten = lambda x: [y for l in x for y in l]
 

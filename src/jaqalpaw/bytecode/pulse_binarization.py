@@ -1,16 +1,16 @@
 import numpy as np
 from scipy.interpolate import CubicSpline
-from bytecode.binary_conversion import convert_freq_full, convert_amp_full, convert_phase_full, convert_to_bytes, map_to_bytes
-from bytecode.encoding_parameters import MAXLEN, DMA_MUX_OFFSET_LOC, OUTPUT_EN_LSB_LOC, FRQ_FB_EN_LSB_LOC, \
+from .binary_conversion import convert_freq_full, convert_amp_full, convert_phase_full, convert_to_bytes, map_to_bytes
+from .encoding_parameters import MAXLEN, DMA_MUX_OFFSET_LOC, OUTPUT_EN_LSB_LOC, FRQ_FB_EN_LSB_LOC, \
                                      WAIT_TRIG_LSB_LOC, CLR_FRAME_LSB_LOC, APPLY_EOF_LSB_LOC, SYNC_FLAG_LSB_LOC, \
                                      AMPMOD0, AMPMOD1, FRQMOD0, FRQMOD1, PHSMOD0, PHSMOD1, FRMROT0, FRMROT1
 
-from utilities.helper_functions import delist
-from utilities.datatypes import Discrete
+from jaqalpaw.utilities.helper_functions import delist
+from jaqalpaw.utilities.datatypes import Discrete
 
 from itertools import zip_longest
 
-from bytecode.spline_mapping import cs_mapper_int, cs_mapper_int_auto_shift
+from .spline_mapping import cs_mapper_int, cs_mapper_int_auto_shift
 
 
 # ######################################################## #

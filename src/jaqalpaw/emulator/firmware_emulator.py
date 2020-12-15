@@ -1,5 +1,5 @@
-from emulator.uram import *
-from emulator.arbiters import *
+from .uram import *
+from .arbiters import *
 import numpy as np
 
 #from emulator.byte_decoding import decode_word, GLUT, SLUT, PLUT, mod_type_dict#, tree
