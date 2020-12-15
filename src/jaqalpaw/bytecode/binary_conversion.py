@@ -12,16 +12,24 @@ def convert_to_bytes(d, bytenum=5, signed=True):
         raise
 
 
-def map_to_bytes(data,bytenum=5):
+def map_to_bytes(data, bytenum=5):
     try:
-        return reduce(lambda x, y: x+y, [d.to_bytes(bytenum, byteorder=ENDIANNESS, signed=True) for d in data])
+        return reduce(
+            lambda x, y: x + y,
+            [d.to_bytes(bytenum, byteorder=ENDIANNESS, signed=True) for d in data],
+        )
     except OverflowError:
         print(f"Data: {data}\nBitLengths: {[len(bin(d))-2 for d in data]}")
         raise
 
 
 def map_from_bytes(d, bytenum=5):
-    return [int.from_bytes(d[n*bytenum:n*bytenum+bytenum], byteorder=ENDIANNESS, signed=True) for n in range(bytenum)]
+    return [
+        int.from_bytes(
+            d[n * bytenum : n * bytenum + bytenum], byteorder=ENDIANNESS, signed=True
+        )
+        for n in range(bytenum)
+    ]
 
 
 def bytes_to_int(b):
@@ -34,32 +42,30 @@ def int_to_bytes(d):
 
 def signed_n_bit_map(x, n=40):
     """Convert integer x to a signed n-bit number"""
-    return ((x & ~(-1 << n)) ^ (1 << n-1)) - (1 << n-1)
-
+    return ((x & ~(-1 << n)) ^ (1 << n - 1)) - (1 << n - 1)
 
 
 def convert_freq_full(frqw):
     """Converts to full 40 bit frequency word for
-       packing into 256 bit spline data"""
-    convf = int(frqw/CLOCK_FREQUENCY*(2**40-1))
+    packing into 256 bit spline data"""
+    convf = int(frqw / CLOCK_FREQUENCY * (2 ** 40 - 1))
     return convf
 
 
 def convert_phase_full(phsw):
     """Converts to full 40 bit frequency word for
-       packing into 256 bit spline data"""
+    packing into 256 bit spline data"""
     if abs(phsw) >= 360.0:
         phsw %= 360.0
     if phsw >= 180:
         phsw -= 360
     elif phsw < -180:
         phsw += 360
-    convf = int(phsw/360.0*(2**40-1))
+    convf = int(phsw / 360.0 * (2 ** 40 - 1))
     return convf
 
 
 def convert_amp_full(ampw):
-    convf = int(ampw/MAXAMP*(2**16-1))
-    fw1 = (convf << 23)
+    convf = int(ampw / MAXAMP * (2 ** 16 - 1))
+    fw1 = convf << 23
     return fw1
-

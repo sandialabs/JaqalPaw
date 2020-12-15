@@ -1,4 +1,3 @@
-
 class PulseException(Exception):
     pass
 
@@ -9,5 +8,3 @@ class CollisionException(Exception):
 
 class CircuitCompilerException(Exception):
     pass
-
-

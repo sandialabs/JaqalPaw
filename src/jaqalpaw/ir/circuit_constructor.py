@@ -16,7 +16,7 @@ from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
 class CircuitConstructor:
     """Walks the jaqal AST and constructs a list of GateSlice
-       objects padding gaps with NOPs and ensuring no collisions"""
+    objects padding gaps with NOPs and ensuring no collisions"""
 
     def __init__(self, channel_num, pulse_definition):
         self.CHANNEL_NUM = channel_num
@@ -42,15 +42,17 @@ class CircuitConstructor:
             raise CircuitCompilerException("No gate pulse file specified!")
         gp_path = Path(self.file).parent
         jaqal_lets, self.gate_pulse_info = self.get_dependencies()
-        gp_name = self.gate_pulse_info[-1]  # jaqal token returns a list of imports (split at '.'), last one is class name
+        gp_name = self.gate_pulse_info[
+            -1
+        ]  # jaqal token returns a list of imports (split at '.'), last one is class name
         for p in self.gate_pulse_info[:-1]:
             gp_path /= p  # construct path object from usepulses call
-        gp_path = gp_path.with_suffix('.py')
+        gp_path = gp_path.with_suffix(".py")
         if gp_path.exists():
             self.gate_pulse_file_path = str(gp_path)
         else:
             raise CircuitCompilerException(f"Can't find path {str(gp_path)}")
-        pd_import = runpy.run_path(gp_path, init_globals={'PulseData': PulseData})
+        pd_import = runpy.run_path(gp_path, init_globals={"PulseData": PulseData})
         self.pulse_definition = pd_import[gp_name]()
         return self.pulse_definition
 
@@ -60,8 +62,10 @@ class CircuitConstructor:
                 text = self.code_literal
             else:
                 text = Path(self.file).read_text()
-            circuit, extra = parse_jaqal_string(text, autoload_pulses=False, return_usepulses=True)
-            usepulses = extra['usepulses']
+            circuit, extra = parse_jaqal_string(
+                text, autoload_pulses=False, return_usepulses=True
+            )
+            usepulses = extra["usepulses"]
             self.base_circuit = expand_macros(circuit)
             self.gate_pulse_info = list(usepulses.keys())[0]
 
@@ -77,6 +81,5 @@ class CircuitConstructor:
         PulseData objects."""
         ast = self.generate_ast(file, override_dict=override_dict)
         self.slice_list = convert_circuit_to_gateslices(
-            self.pulse_definition, ast, self.CHANNEL_NUM)
-
-
+            self.pulse_definition, ast, self.CHANNEL_NUM
+        )

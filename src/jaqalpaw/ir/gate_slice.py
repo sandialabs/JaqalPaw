@@ -14,7 +14,7 @@ class GateSlice:
     def __init__(self, num_channels=None):
         self.channel_data = defaultdict(list)
         self.num_channels = num_channels or self.CHANNEL_NUM
-        #self.repeats = 1
+        # self.repeats = 1
 
     def __repr__(self):
         retlist = []
@@ -34,7 +34,9 @@ class GateSlice:
                         elif other.channel_data[k] is None:
                             continue
                         else:
-                            raise CollisionException(f"Data does not match on channel {k}!")
+                            raise CollisionException(
+                                f"Data does not match on channel {k}!"
+                            )
             else:
                 self.channel_data[k] = other.channel_data[k]
 
@@ -65,18 +67,22 @@ class GateSlice:
         max_channel_length = max(channel_lengths)
         for k in range(self.num_channels):
             if channel_lengths[k] < max_channel_length:
-                self.channel_data[k].extend([None]*(max_channel_length - channel_lengths[k]))
+                self.channel_data[k].extend(
+                    [None] * (max_channel_length - channel_lengths[k])
+                )
 
     def flatten_common_single(self, k):
-        if len(self.channel_data[k])>1:
-            for i, (pd1, pd2) in enumerate(zip(self.channel_data[k][:-1], self.channel_data[k][1:])):
+        if len(self.channel_data[k]) > 1:
+            for i, (pd1, pd2) in enumerate(
+                zip(self.channel_data[k][:-1], self.channel_data[k][1:])
+            ):
                 pd1_dag = copy(pd1)
                 pd1_dag.dur = 1
                 pd2_dag = copy(pd2)
                 pd2_dag.dur = 1
                 if pd1_dag == pd2_dag and not pd1_dag.waittrig:
-                    pd1_dag.dur = ClockCycles(pd1.dur+pd2.dur)
-                    self.channel_data[k][i:i+2] = [pd1_dag]
+                    pd1_dag.dur = ClockCycles(pd1.dur + pd2.dur)
+                    self.channel_data[k][i : i + 2] = [pd1_dag]
                     return True
         return False
 
@@ -97,7 +103,12 @@ class GateSlice:
             max_duration = max(durations)
             for k in range(self.num_channels):
                 if durations[k] < max_duration:
-                    append_prepend_distribute(k, self.channel_data[k], ClockCycles(max_duration-durations[k]), apd=0)
+                    append_prepend_distribute(
+                        k,
+                        self.channel_data[k],
+                        ClockCycles(max_duration - durations[k]),
+                        apd=0,
+                    )
         return self
 
     def print_times(self, realtime=True):
@@ -113,7 +124,10 @@ class GateSlice:
                         dur_list.append(pd.dur)
                     pd.bin_to_dur()
             if realtime:
-                print(f"Channel {k}; Total Duration: {real_time(ClockCycles(total_dur))}; Durations: {dur_list}")
+                print(
+                    f"Channel {k}; Total Duration: {real_time(ClockCycles(total_dur))}; Durations: {dur_list}"
+                )
             else:
-                print(f"Channel {k}; Total Duration: {total_dur}; Durations: {dur_list}")
-
+                print(
+                    f"Channel {k}; Total Duration: {total_dur}; Durations: {dur_list}"
+                )

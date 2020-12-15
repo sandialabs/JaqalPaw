@@ -1,7 +1,12 @@
 from jaqalpaq.core.algorithm.visitor import Visitor
 
 from .gate_slice import GateSlice
-from .ast_utilities import merge_slice_lists, is_total_gate, get_gate_data, normalize_number
+from .ast_utilities import (
+    merge_slice_lists,
+    is_total_gate,
+    get_gate_data,
+    normalize_number,
+)
 from jaqalpaw.utilities.datatypes import Loop
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
@@ -44,12 +49,14 @@ class CircuitConstructorVisitor(Visitor):
     def visit_GateStatement(self, gate):
         """Create a list of a single GateSlice representing this gate."""
         gslice = GateSlice(num_channels=self.num_channels)
-        if not hasattr(self.pulse_definition, 'gate_'+gate.name):
+        if not hasattr(self.pulse_definition, "gate_" + gate.name):
             raise CircuitCompilerException(f"Gate {gate.name} not found")
         if is_total_gate(gate.name):
             args = [self.num_channels]
             if len(gate.parameters) > 0:
-                raise CircuitCompilerException(f"gate {gate.name} cannot have parameters")
+                raise CircuitCompilerException(
+                    f"gate {gate.name} cannot have parameters"
+                )
         else:
             args = [self.visit(garg) for garg in gate.parameters.values()]
         gate_data = get_gate_data(self.pulse_definition, gate.name, args)
@@ -82,5 +89,3 @@ class CircuitConstructorVisitor(Visitor):
         """Resolve the constant to a numeric value and return that."""
         ret = normalize_number(const.resolve_value())
         return ret
-
-

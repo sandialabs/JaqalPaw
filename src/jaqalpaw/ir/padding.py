@@ -9,7 +9,7 @@ def append_prepend_distribute(ch, pdl, dur, apd=0):
         if len(pdl):
             if isinstance(pdl[-1], PulseData):
                 new_pd = PulseData(ch, dur)
-                for param in ['freq0', 'freq1']:
+                for param in ["freq0", "freq1"]:
                     if type(getattr(pdl[-1], param)) in (Spline, Discrete):
                         setattr(new_pd, param, getattr(pdl[-1], param)[-1])
                 pdl.append(new_pd)

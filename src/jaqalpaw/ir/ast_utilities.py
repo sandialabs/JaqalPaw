@@ -2,10 +2,12 @@ from itertools import zip_longest
 
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
+
 def get_let_constants(ast):
     """Return a list mapping let constant names to their numeric values."""
-    return {name: normalize_number(const.value)
-            for name, const in ast.constants.items()}
+    return {
+        name: normalize_number(const.value) for name, const in ast.constants.items()
+    }
 
 
 def normalize_number(value):
@@ -24,7 +26,7 @@ def normalize_number(value):
 def is_total_gate(gate_name):
     """Return if this gate uses all available qubits without explicitly
     mentioning them as arguments."""
-    return gate_name in ['prepare_all', 'measure_all']
+    return gate_name in ["prepare_all", "measure_all"]
 
 
 def gate_pulse_exists(pulse_definition, gate_name):
@@ -54,8 +56,7 @@ def merge_slice_lists(dst_list, src_list):
     """Take two lists of GateSlice objects and merge them. Overwrites
     dst_list."""
 
-    return [merge_slices(dst, src)
-            for dst, src in zip_longest(dst_list, src_list)]
+    return [merge_slices(dst, src) for dst, src in zip_longest(dst_list, src_list)]
 
 
 def merge_slices(dst, src):
@@ -81,5 +82,3 @@ def iter_gate_parameters(gate):
     parameter_types = gate.gate_def.parameters
     for param in parameter_types:
         yield gate.parameters[param.name]
-
-
