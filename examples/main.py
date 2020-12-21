@@ -1,8 +1,8 @@
-# from octet.HWEmulator.FirmwareEmulator import trigger_events, printMetadataOutput, plotOctetEmulatorOutput
-# from octet.jaqalCompiler import CircuitCompiler
+import time
+from pathlib import Path
+
 from jaqalpaw.compiler.jaqal_compiler import CircuitCompiler
 from jaqalpaw.emulator.firmware_emulator import plot_octet_emulator_output
-import time
 
 
 def flatten(code):
@@ -23,7 +23,18 @@ def emulate_jaqal_file(file):
     # plot_octet_emulator_output(code)
 
 
+def find_file(filename):
+    """Look for the file in several reasonable places like the current
+    directory, and examples directory."""
+
+    candidate_dirs = [Path("."), Path("./examples"), Path("../examples")]
+    for dir in candidate_dirs:
+        if (dir / filename).exists():
+            return dir / filename
+    raise IOError(f"Could not find file {filename}")
+
+
 if __name__ == "__main__":
     # emulate_jaqal_file("examples/test.jql")
-    emulate_jaqal_file("hadamard.jql")
+    emulate_jaqal_file(find_file("hadamard.jql"))
     # emulate_jaqal_file("autogen_exp.jql")
