@@ -28,10 +28,10 @@ class ManyGates(Benchmark):
         for _ in range(self.gate_count):
             gate_set.append(make_random_gate(register))
         gates = random.choices(gate_set, k=self.circuit_depth)
-        sexpr = ["circuit", register, *gates]
-        circ = build(sexpr)
+        sexpr = ("circuit", register, *gates)
+        circ = build(make_hashable(sexpr))
         code = (
-            "from PulseDefinitions.StandardGatePulses usepulses *\n\n"
+            "from pulse_definitions.StandardGatePulses usepulses *\n\n"
             + generate_jaqal_program(circ)
         )
         self.fd = NamedTemporaryFile(delete=False)
@@ -75,9 +75,9 @@ class NestedGates(Benchmark):
             if remaining_depth == 0:
                 break
         sexpr = ["circuit", register, *gates]
-        circ = build(sexpr)
+        circ = build(make_hashable(sexpr))
         code = (
-            "from PulseDefinitions.StandardGatePulses usepulses *\n\n"
+            "from pulse_definitions.StandardGatePulses usepulses *\n\n"
             + generate_jaqal_program(circ)
         )
         self.fd = NamedTemporaryFile(delete=False)
@@ -104,16 +104,19 @@ class NestedGates(Benchmark):
 
 def copy_pulse_definition_file(dirname):
     """Find the PulseDefinitions.py file and copy it to the given directory."""
-    filename = "PulseDefinitions.py"
-    if filename in os.listdir():
-        # The cwd is probably the package root
-        shutil.copy(filename, dirname)
-    elif filename in os.listdir(".."):
-        # The cwd is probably the directory with this file
-        shutil.copy(Path("..") / filename, dirname)
+    filename = "pulse_definitions.py"
+    # We're not sure where we are being run from, so search around to
+    # find the pulse definitions file.
+    dir_candidates = [Path("./examples"), Path("..") / "examples"]
+    for dir in dir_candidates:
+        if filename in os.listdir(dir):
+            shutil.copy(dir / filename, dirname)
+            break
     else:
         # I don't know where we are
-        raise ValueError("Cannot find PulseDefinitions.py for hacky override")
+        raise ValueError(
+            "Cannot find PulseDefinitions.py. Run benchmarks from the source directory."
+        )
 
 
 def make_random_register():
@@ -263,15 +266,17 @@ def make_random_gate(register, valid_qubits=None, use_all_qubit=True):
         make_random_gate_Syd,
         make_random_gate_Szd,
         make_random_gate_I,
-        make_random_gate_GaussPLE2,
     ]
     two_options = [
-        make_random_gate_MS,
-        make_random_gate_Sxx,
+        # Empty unless we can account for the global beam.
     ]
     all_qubit_options = [
         make_random_gate_prepare_all,
         make_random_gate_measure_all,
+        # These don't use all the qubits, but they do use the global
+        # beam.
+        make_random_gate_MS,
+        make_random_gate_Sxx,
     ]
     if valid_qubits.size > 1:
         options = options + two_options
@@ -415,6 +420,14 @@ def make_random_qubits(register, valid_qubits, count):
 
 def make_random_angle():
     return random.uniform(0, 360)
+
+
+def make_hashable(obj):
+    """Descent into this object and replace any lists with tuples."""
+    if isinstance(obj, (tuple, list)):
+        return tuple(make_hashable(v) for v in obj)
+    else:
+        return obj
 
 
 def main():
