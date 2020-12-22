@@ -171,7 +171,7 @@ class StandardGatePulses:
     def gate_I(self, qubit):
         return [PulseData(qubit, self.nominal_single_qubit_pi_time)]
 
-    def gate_MS(self, qubit1, qubit2, theta, phi):
+    def gate_MS(self, qubit1, qubit2, phi, theta):
         phase = (theta < 0) * 180 + phi / math.pi * 180
         duration_scaling = abs(theta / math.pi * 2)
         gate_duration = duration_scaling * self.nominal_MS_gate_times[qubit1][qubit2]
