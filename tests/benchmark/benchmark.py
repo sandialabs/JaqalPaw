@@ -37,7 +37,6 @@ class Benchmark:
                 self.times.append(time)
             except Exception as exc:
                 print(f"Ignored Exception: {exc}")
-                raise
             finally:
                 self.tearDown()
 

@@ -109,7 +109,7 @@ def copy_pulse_definition_file(dirname):
     # find the pulse definitions file.
     dir_candidates = [Path("./examples"), Path("..") / "examples"]
     for dir in dir_candidates:
-        if filename in os.listdir(dir):
+        if dir.exists() and filename in os.listdir(dir):
             shutil.copy(dir / filename, dirname)
             break
     else:
