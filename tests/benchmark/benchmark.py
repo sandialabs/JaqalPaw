@@ -67,6 +67,7 @@ class Benchmark:
 
 
 def run_benchmarks(benchmarks):
+    print("<benchmark>: <avg-time> (<min-time>, <max-time>) s")
     for bm_cls in benchmarks:
         bm = bm_cls()
         bm.start()
@@ -74,6 +75,7 @@ def run_benchmarks(benchmarks):
 
 
 def profile_benchmarks(benchmarks):
+    print("<benchmark>: <avg-time> (<min-time>, <max-time>) s")
     for bm_cls in benchmarks:
         bm = bm_cls()
         bm.profile()
