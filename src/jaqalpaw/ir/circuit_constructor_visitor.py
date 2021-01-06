@@ -42,7 +42,13 @@ class CircuitConstructorVisitor(Visitor):
                 slice_list = merge_slice_lists(slice_list, stmt_slices)
         else:
             for stmt in block.statements:
-                slice_list.extend(self.visit(stmt))
+                vstmt = self.visit(stmt)
+                try:
+                    repeats = vstmt.repeats
+                except AttributeError:
+                    repeats = 1
+                for _ in range(repeats):
+                    slice_list.extend(vstmt)
 
         return slice_list
 
