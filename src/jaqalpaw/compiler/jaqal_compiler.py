@@ -12,9 +12,9 @@ from jaqalpaw.bytecode.lut_programming import (
     gate_sequence_bytes,
 )
 from .time_ordering import timesort_bytelist
-from jaqalpaw.utilities.datatypes import Loop
+from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
-from jaqalpaw.utilities.helper_functions import clock_cycles
+from jaqalpaw.utilities.parameters import CLKFREQ
 
 flatten = lambda x: [y for l in x for y in l]
 
@@ -71,8 +71,8 @@ class CircuitCompiler(CircuitConstructor):
             if global_delay < 0:
                 default_delay = -global_delay
                 global_delay = 0
-            self.delay_settings = defaultdict(lambda: clock_cycles(default_delay))
-            self.delay_settings[0] = clock_cycles(global_delay)
+            self.delay_settings = defaultdict(lambda: to_clock_cycles(default_delay, CLKFREQ))
+            self.delay_settings[0] = to_clock_cycles(global_delay, CLKFREQ)
 
     def recursive_append_and_expand(self, slices, appendto):
         """Walk nested lists and expand Loops for bypass data"""

@@ -3,9 +3,9 @@ from copy import copy
 
 from .pulse_data import PulseData
 from .padding import append_prepend_distribute
-from jaqalpaw.utilities.datatypes import ClockCycles
+from jaqalpaw.utilities.datatypes import ClockCycles, to_real_time
 from jaqalpaw.utilities.exceptions import CollisionException
-from jaqalpaw.utilities.helper_functions import real_time
+from jaqalpaw.utilities.parameters import CLKFREQ
 
 
 class GateSlice:
@@ -125,7 +125,7 @@ class GateSlice:
                     pd.bin_to_dur()
             if realtime:
                 print(
-                    f"Channel {k}; Total Duration: {real_time(ClockCycles(total_dur))}; Durations: {dur_list}"
+                    f"Channel {k}; Total Duration: {to_real_time(ClockCycles(total_dur), CLKFREQ)}; Durations: {dur_list}"
                 )
             else:
                 print(

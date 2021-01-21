@@ -1,7 +1,9 @@
 from collections import defaultdict
 
 from jaqalpaw.bytecode.pulse_binarization import pulse
-from jaqalpaw.utilities.helper_functions import clock_cycles, make_list_hashable
+from jaqalpaw.utilities.helper_functions import make_list_hashable
+from jaqalpaw.utilities.datatypes import to_clock_cycles
+from jaqalpaw.utilities.parameters import CLKFREQ
 
 pd_cache = dict()
 
@@ -39,7 +41,7 @@ class PulseData:
     ):
         self.channel = channel
         self.real_dur = dur
-        self.dur = clock_cycles(dur)
+        self.dur = to_clock_cycles(dur, CLKFREQ)
         self.freq0 = make_list_hashable(freq0)
         self.phase0 = make_list_hashable(phase0)
         self.amp0 = make_list_hashable(amp0)

@@ -2,6 +2,18 @@ class ClockCycles(int):
     pass
 
 
+def to_clock_cycles(dur, clkfreq):
+    if isinstance(dur, ClockCycles):
+        return dur
+    return ClockCycles(dur * clkfreq)
+
+
+def to_real_time(dur, clkfreq):
+    if isinstance(dur, ClockCycles):
+        return dur / clkfreq
+    return dur
+
+
 class Spline(tuple):
     pass
 
