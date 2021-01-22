@@ -19,9 +19,9 @@ def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):
 
 def make_all_durations_equal(obj):
     """Calls obj.make_durations_equal if obj is a GateSlice.  If obj is a
-       list or Loop, recursively descends to all GateSlice elements
-       and calls make_durations_equal().  The argument is modified in
-       place."""
+    list or Loop, recursively descends to all GateSlice elements
+    and calls make_durations_equal().  The argument is modified in
+    place."""
     if isinstance(obj, (Loop, list)):
         for slc in obj:
             make_all_durations_equal(slc)
