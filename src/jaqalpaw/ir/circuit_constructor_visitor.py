@@ -17,6 +17,18 @@ def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):
     return visitor.visit(circuit)
 
 
+def make_all_durations_equal(obj):
+    """Calls obj.make_durations_equal if obj is a GateSlice.  If obj is a
+       list or Loop, recursively descends to all GateSlice elements
+       and calls make_durations_equal().  The argument is modified in
+       place."""
+    if isinstance(obj, (Loop, list)):
+        for slc in obj:
+            make_all_durations_equal(slc)
+    else:
+        obj.make_durations_equal()
+
+
 class CircuitConstructorVisitor(Visitor):
     """Convert a Circuit into a list of GateSlice objects."""
 
@@ -28,8 +40,7 @@ class CircuitConstructorVisitor(Visitor):
     def visit_Circuit(self, circuit):
         slice_list = self.visit(circuit.body)
 
-        for slc in slice_list:
-            slc.make_durations_equal()
+        make_all_durations_equal(slice_list)
 
         return slice_list
 
@@ -42,13 +53,7 @@ class CircuitConstructorVisitor(Visitor):
                 slice_list = merge_slice_lists(slice_list, stmt_slices)
         else:
             for stmt in block.statements:
-                vstmt = self.visit(stmt)
-                try:
-                    repeats = vstmt.repeats
-                except AttributeError:
-                    repeats = 1
-                for _ in range(repeats):
-                    slice_list.extend(vstmt)
+                slice_list.append(self.visit(stmt))
 
         return slice_list
 
