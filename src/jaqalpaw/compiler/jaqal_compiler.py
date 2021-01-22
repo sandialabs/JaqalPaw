@@ -71,7 +71,9 @@ class CircuitCompiler(CircuitConstructor):
             if global_delay < 0:
                 default_delay = -global_delay
                 global_delay = 0
-            self.delay_settings = defaultdict(lambda: to_clock_cycles(default_delay, CLKFREQ))
+            self.delay_settings = defaultdict(
+                lambda: to_clock_cycles(default_delay, CLKFREQ)
+            )
             self.delay_settings[0] = to_clock_cycles(global_delay, CLKFREQ)
 
     def recursive_append_and_expand(self, slices, appendto):
