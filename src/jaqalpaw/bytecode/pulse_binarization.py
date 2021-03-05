@@ -332,25 +332,37 @@ def pulse(
         "phase0": {
             "modtype": PHSMOD0,
             "data": phase0,
-            "convertFunc": {"discrete": convert_phase_full_mod_2pi, "spline": convert_phase_full},
+            "convertFunc": {
+                "discrete": convert_phase_full_mod_2pi,
+                "spline": convert_phase_full,
+            },
             "enabled": True,
         },
         "phase1": {
             "modtype": PHSMOD1,
             "data": phase1,
-            "convertFunc": {"discrete": convert_phase_full_mod_2pi, "spline": convert_phase_full},
+            "convertFunc": {
+                "discrete": convert_phase_full_mod_2pi,
+                "spline": convert_phase_full,
+            },
             "enabled": True,
         },
         "framerot0": {
             "modtype": FRMROT0,
             "data": framerot0,
-            "convertFunc": {"discrete": convert_phase_full_mod_2pi, "spline": convert_phase_full},
+            "convertFunc": {
+                "discrete": convert_phase_full_mod_2pi,
+                "spline": convert_phase_full,
+            },
             "enabled": True,
         },
         "framerot1": {
             "modtype": FRMROT1,
             "data": framerot1,
-            "convertFunc": {"discrete": convert_phase_full_mod_2pi, "spline": convert_phase_full},
+            "convertFunc": {
+                "discrete": convert_phase_full_mod_2pi,
+                "spline": convert_phase_full,
+            },
             "enabled": True,
         },
     }
@@ -379,7 +391,12 @@ def pulse(
             # xdata needs to have unit spacing to work well with the
             # pdq spline mapping even when data is nonuniform
             xdata = [i for i in range(n_points)]
-            ydata = list(map(mpdict[modt]["convertFunc"]['discrete' if pulsemode else 'spline'], mpdict[modt]["data"]))
+            ydata = list(
+                map(
+                    mpdict[modt]["convertFunc"]["discrete" if pulsemode else "spline"],
+                    mpdict[modt]["data"],
+                )
+            )
 
             # raw_cycles specifies the actual time grid, distributing
             # rounding errors must have one more point for pulse mode
@@ -411,7 +428,7 @@ def pulse(
             )
         else:
             lbytes, _ = generate_single_pulse_bytes(
-                mpdict[modt]["convertFunc"]['discrete'](delist(mpdict[modt]["data"])),
+                mpdict[modt]["convertFunc"]["discrete"](delist(mpdict[modt]["data"])),
                 dur,
                 modtype=mpdict[modt]["modtype"],
                 waittrig=waittrig,
