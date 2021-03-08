@@ -1,6 +1,6 @@
 def pdq_spline(coeffs, xdata, nsteps=409625, shift=0):
     """Generate spline data for mapped coefficients
-       Note: nsteps = 1/tstep-1 used in cs_mapper"""
+    Note: nsteps = 1/tstep-1 used in cs_mapper"""
     final_data = []
     for n, x in enumerate(xdata):
         # Initialize coefficients for t0
