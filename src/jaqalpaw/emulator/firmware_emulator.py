@@ -216,8 +216,8 @@ def print_metadata_output(input_bytes):
                     tlist.append(t)
             print(
                 f"ch {chnm} received {len(tlist)} wait trigger events at times: {tlist} diff: {np.diff(tlist)}"
-                f" real time (us): [{' '.join(list(map(lambda s: '{:.3g}'.format(s*1e6),list(map(convertTimeFromClockCycles, tlist)))))}]"
-                f" diff: [{' '.join(list(map(lambda s: '{:.3g}'.format(s*1e6),np.diff(list(map(convertTimeFromClockCycles, tlist))))))}]"
+                f" real time (us): [{' '.join(list(map(lambda s: '{:.3g}'.format(s*1e6),list(map(convert_time_from_clock_cycles, tlist)))))}]"
+                f" diff: [{' '.join(list(map(lambda s: '{:.3g}'.format(s*1e6),np.diff(list(map(convert_time_from_clock_cycles, tlist))))))}]"
             )
 
     for chnm in range(8):

@@ -77,6 +77,7 @@ async def spline_engine(
     """Converts the spline coefficients to a format that can be passed into a SplineEngine emulator,
     which generates the corresponding output and stores the data in time_list and data_list for
     plotting and/or inspecting the data"""
+    eof_data = 0
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
