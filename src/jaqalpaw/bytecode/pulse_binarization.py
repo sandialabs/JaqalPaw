@@ -17,6 +17,8 @@ from .encoding_parameters import (
     CLR_FRAME_LSB_LOC,
     APPLY_EOF_LSB_LOC,
     SYNC_FLAG_LSB_LOC,
+    FWD_FRM_T0_LSB_LOC,
+    INV_FRM_T0_LSB_LOC,
     AMPMOD0,
     AMPMOD1,
     FRQMOD0,
@@ -52,6 +54,10 @@ def apply_metadata(
     channel=0,
     apply_at_eof_mask=0,
     rst_frame_mask=0,
+    fwd_frame0_mask=0,
+    fwd_frame1_mask=0,
+    inv_frame0_mask=0,
+    inv_frame1_mask=0,
     ind=0,
 ):
     """Apply all metadata bits based on input flags, for splines, certain metadata bits are applied only
@@ -64,11 +70,19 @@ def apply_metadata(
     metadata |= channel_mux
     output_en = 0
     fb_enable = 0
+    fwd_frame = 0
+    inv_frame = 0
     tone_mask = 0b01 if modtype & 0b111 else 0b10
     if not (modtype & 0b11000000):  # frame_rot (z rotations)
         output_en = 1 << OUTPUT_EN_LSB_LOC if (enable_mask & tone_mask) else 0
         fb_enable = 1 << FRQ_FB_EN_LSB_LOC if (fb_enable_mask & tone_mask) else 0
-    metadata |= output_en | fb_enable
+    elif (modtype & 0b01000000):
+        fwd_frame = (0b11 & fwd_frame0_mask) << FWD_FRM_T0_LSB_LOC
+        inv_frame = (0b11 & inv_frame0_mask) << INV_FRM_T0_LSB_LOC
+    elif (modtype & 0b10000000):
+        fwd_frame = (0b11 & fwd_frame1_mask) << FWD_FRM_T0_LSB_LOC
+        inv_frame = (0b11 & inv_frame1_mask) << INV_FRM_T0_LSB_LOC
+    metadata |= output_en | fb_enable | fwd_frame | inv_frame
     if ind == 0:
         sync = 0
         clr_frame = 0
@@ -104,6 +118,10 @@ def generate_bytes(
     channel=0,
     apply_at_eof_mask=0,
     rst_frame_mask=0,
+    fwd_frame0_mask=0,
+    fwd_frame1_mask=0,
+    inv_frame0_mask=0,
+    inv_frame1_mask=0,
 ):
     """Generate binary data for contiguous, spline pulses. Used when pulse()
     is called and a parameter is specified by a typle"""
@@ -132,6 +150,10 @@ def generate_bytes(
             channel=channel,
             apply_at_eof_mask=apply_at_eof_mask,
             rst_frame_mask=rst_frame_mask,
+            fwd_frame0_mask=fwd_frame0_mask,
+            fwd_frame1_mask=fwd_frame1_mask,
+            inv_frame0_mask=inv_frame0_mask,
+            inv_frame1_mask=inv_frame1_mask,
             ind=n,
         )
         final_bytes = final_bytes + fullbytes
@@ -152,6 +174,10 @@ def generate_pulse_bytes(
     channel=0,
     apply_at_eof_mask=0,
     rst_frame_mask=0,
+    fwd_frame0_mask=0,
+    fwd_frame1_mask=0,
+    inv_frame0_mask=0,
+    inv_frame1_mask=0,
 ):
     """Generate binary data for contiguous, discrete pulses. Used when pulse()
     is called and a parameter is specified by a list"""
@@ -175,6 +201,10 @@ def generate_pulse_bytes(
             channel=channel,
             apply_at_eof_mask=apply_at_eof_mask,
             rst_frame_mask=rst_frame_mask,
+            fwd_frame0_mask=fwd_frame0_mask,
+            fwd_frame1_mask=fwd_frame1_mask,
+            inv_frame0_mask=inv_frame0_mask,
+            inv_frame1_mask=inv_frame1_mask,
             ind=n,
         )
         final_bytes = final_bytes + fullbytes
@@ -197,6 +227,10 @@ def generate_spline_bytes(
     channel=0,
     apply_at_eof_mask=0,
     rst_frame_mask=0,
+    fwd_frame0_mask=0,
+    fwd_frame1_mask=0,
+    inv_frame0_mask=0,
+    inv_frame1_mask=0,
 ):
     """Generates spline coefficients, remaps them for a pdq spline and gets the corresponding byte data."""
     if pulse_mode:
@@ -212,6 +246,10 @@ def generate_spline_bytes(
             fb_enable_mask=fb_enable_mask,
             apply_at_eof_mask=apply_at_eof_mask,
             rst_frame_mask=rst_frame_mask,
+            fwd_frame0_mask=fwd_frame0_mask,
+            fwd_frame1_mask=fwd_frame1_mask,
+            inv_frame0_mask=inv_frame0_mask,
+            inv_frame1_mask=inv_frame1_mask,
             channel=channel,
         )
     else:
@@ -244,6 +282,10 @@ def generate_spline_bytes(
             fb_enable_mask=fb_enable_mask,
             apply_at_eof_mask=apply_at_eof_mask,
             rst_frame_mask=rst_frame_mask,
+            fwd_frame0_mask=fwd_frame0_mask,
+            fwd_frame1_mask=fwd_frame1_mask,
+            inv_frame0_mask=inv_frame0_mask,
+            inv_frame1_mask=inv_frame1_mask,
             channel=channel,
         )
     return final_byte_list
@@ -261,6 +303,10 @@ def generate_single_pulse_bytes(
     channel=0,
     apply_at_eof_mask=0,
     rst_frame_mask=0,
+    fwd_frame0_mask=0,
+    fwd_frame1_mask=0,
+    inv_frame0_mask=0,
+    inv_frame1_mask=0,
 ):
     """prints out coefficient data with wait times in between.
     pow gives an overall scale factor to the data of 2**pow,
@@ -279,6 +325,10 @@ def generate_single_pulse_bytes(
         channel=channel,
         apply_at_eof_mask=apply_at_eof_mask,
         rst_frame_mask=rst_frame_mask,
+        fwd_frame0_mask=fwd_frame0_mask,
+        fwd_frame1_mask=fwd_frame1_mask,
+        inv_frame0_mask=inv_frame0_mask,
+        inv_frame1_mask=inv_frame1_mask,
     )
     return final_bytes, [final_bytes]
 
@@ -300,6 +350,10 @@ def pulse(
     framerot1=0,
     apply_at_eof_mask=0,
     rst_frame_mask=0,
+    fwd_frame0_mask=0,
+    fwd_frame1_mask=0,
+    inv_frame0_mask=0,
+    inv_frame1_mask=0,
     bypass=False,
 ):
     """Generates the binary data that needs to be uploaded to the chip from a set of input parameters"""
@@ -423,6 +477,10 @@ def pulse(
                     fb_enable_mask=fb_enable_mask,
                     apply_at_eof_mask=apply_at_eof_mask,
                     rst_frame_mask=rst_frame_mask,
+                    fwd_frame0_mask=fwd_frame0_mask,
+                    fwd_frame1_mask=fwd_frame1_mask,
+                    inv_frame0_mask=inv_frame0_mask,
+                    inv_frame1_mask=inv_frame1_mask,
                     channel=DDS,
                 )
             )
@@ -438,6 +496,10 @@ def pulse(
                 fb_enable_mask=fb_enable_mask,
                 apply_at_eof_mask=apply_at_eof_mask,
                 rst_frame_mask=rst_frame_mask,
+                fwd_frame0_mask=fwd_frame0_mask,
+                fwd_frame1_mask=fwd_frame1_mask,
+                inv_frame0_mask=inv_frame0_mask,
+                inv_frame1_mask=inv_frame1_mask,
                 channel=DDS,
             )
             bytelist.append([lbytes])
