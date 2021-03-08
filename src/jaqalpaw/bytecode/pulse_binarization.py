@@ -76,10 +76,10 @@ def apply_metadata(
     if not (modtype & 0b11000000):  # frame_rot (z rotations)
         output_en = 1 << OUTPUT_EN_LSB_LOC if (enable_mask & tone_mask) else 0
         fb_enable = 1 << FRQ_FB_EN_LSB_LOC if (fb_enable_mask & tone_mask) else 0
-    elif (modtype & 0b01000000):
+    elif modtype & 0b01000000:
         fwd_frame = (0b11 & fwd_frame0_mask) << FWD_FRM_T0_LSB_LOC
         inv_frame = (0b11 & inv_frame0_mask) << INV_FRM_T0_LSB_LOC
-    elif (modtype & 0b10000000):
+    elif modtype & 0b10000000:
         fwd_frame = (0b11 & fwd_frame1_mask) << FWD_FRM_T0_LSB_LOC
         inv_frame = (0b11 & inv_frame1_mask) << INV_FRM_T0_LSB_LOC
     metadata |= output_en | fb_enable | fwd_frame | inv_frame
