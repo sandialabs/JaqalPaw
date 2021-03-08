@@ -14,4 +14,3 @@ def pdq_spline(coeffs, xdata, nsteps=409625, shift=0):
             v1 += v2 >> shift
             v2 += v3 >> shift
     return final_data
-

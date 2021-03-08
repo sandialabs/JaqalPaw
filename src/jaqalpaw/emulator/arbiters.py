@@ -67,12 +67,7 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
 
 
 async def spline_engine(
-    name,
-    queue,
-    time_list,
-    data_list,
-    waittrig_list,
-    enablemask_list,
+    name, queue, time_list, data_list, waittrig_list, enablemask_list,
 ):
     """Converts the spline coefficients to a format that can be passed into a SplineEngine emulator,
     which generates the corresponding output and stores the data in time_list and data_list for
