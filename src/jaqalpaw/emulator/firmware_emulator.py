@@ -1,3 +1,5 @@
+from jaqalpaq.core import CircuitBuilder
+
 from .uram import *
 from .arbiters import *
 import numpy as np
@@ -256,7 +258,7 @@ def print_metadata_output(input_bytes):
 
 
 def plot_octet_emulator_output(ret, compare_lut_to_bypass=False, num_plots=8):
-    from emulator.byte_decoding import (
+    from jaqalpaw.emulator.byte_decoding import (
         decode_word,
         GLUT,
         SLUT,

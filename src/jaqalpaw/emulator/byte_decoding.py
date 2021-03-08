@@ -20,7 +20,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
 )
 from .uram import PADDRW, SADDRW, GLUT, SLUT, PLUT, GADDRW
 from .pdq_spline import pdq_spline
-from jaqalpaw.utilities.parameters import CLKPERIOD, CLOCK_FREQUENCY
+from jaqalpaw.utilities.parameters import CLKPERIOD, CLOCK_FREQUENCY, MAXAMP
 
 tree = lambda: defaultdict(tree)
 
@@ -32,11 +32,11 @@ def convert_phase_bytes_to_real(data):
 
 
 def convert_freq_bytes_to_real(data):
-    return data / (2 ** 40 - 1) * CLOCK_FREQUENCY / 1e6
+    return data / (2 ** 40 - 1) * CLOCK_FREQUENCY
 
 
 def convert_amp_bytes_to_real(data):
-    return (int(data) >> 23) / (2 ** 16 - 1) * 200.0
+    return (int(data) >> 23) / (2 ** 16 - 1) * MAXAMP
 
 
 def convert_time_from_clock_cycles(data):

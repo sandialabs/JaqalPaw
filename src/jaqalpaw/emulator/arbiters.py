@@ -78,6 +78,7 @@ async def spline_engine(
         shift = (data >> SPLSHIFT_LSB) & 0b11111
         channel = (data >> DMA_MUX_OFFSET) & 0b111
         reset_accum = (data >> CLR_FRAME_LSB) & 0b1
+        apply_at_eof = (data >> APPLY_EOF_LSB) & 0b1
         dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
         # Convert binary values to real-unit equivalents for monitoring
         # dur += TIMECORR+0#+4
@@ -94,8 +95,17 @@ async def spline_engine(
             if (
                 mod_type > 5
             ):  # then we have a z rotation which must accumulate from old values
-                last_val = data_list[-1] if not reset_accum else 0
-                data_list.append(last_val + U0_real)
+                if reset_accum:
+                    last_val = 0
+                    eof_data = 0
+                else:
+                    last_val = data_list[-1]
+                if apply_at_eof:
+                    data_list.append(last_val + eof_data)
+                    eof_data = U0_real
+                else:
+                    data_list.append(last_val + U0_real + eof_data)
+                    eof_data = 0
             else:
                 data_list.append(U0_real)
                 waittrig_list[-1] = waittrig
@@ -107,9 +117,9 @@ async def spline_engine(
             )
         else:
             # Bit shifting is done to enhance precision within firmware
-            U1_shift = U1 / (2 ** (shift * 1))
-            U2_shift = U2 / (2 ** (shift * 2))
-            U3_shift = U3 / (2 ** (shift * 3))
+            U1_shift = U1
+            U2_shift = U2
+            U3_shift = U3
             # Calculate the same for real values for monitoring purposes only
             U1_rshift = U1_real / (2 ** shift)
             U2_rshift = U2_real / (2 ** (shift * 2))
@@ -122,19 +132,21 @@ async def spline_engine(
             coeffs[3, 0] = U0
             # The additional 3 clock cycles are related to a subtle hardware issue
             xdata = np.array(list(range(dur))) + 1
-            spline_data = pdq_spline(coeffs, [0], nsteps=dur)
+            spline_data = pdq_spline(coeffs, [0], nsteps=dur, shift=shift)
             spline_data_real = list(
                 map(mod_type_dict[mod_type]["realConvFunc"], spline_data)
             )
             xdata_real = list(map(lambda x: time_list[-1] + x, xdata))
-            time_list.extend(xdata_real[1:])
+            time_list.extend(xdata_real[:])
             last_val = data_list[-1]
             if (
                 mod_type > 5
             ):  # then we have a z rotation which must accumulate from old values
                 if reset_accum:
                     last_val = 0
-                data_list.extend(last_val + np.array(spline_data_real))
+                    eof_data = 0
+                data_list.extend(last_val + eof_data + np.array(spline_data_real))
+                eof_data = 0
             else:
                 data_list.extend(spline_data_real)
             print(
