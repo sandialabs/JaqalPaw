@@ -214,10 +214,13 @@ def print_metadata_output(input_bytes):
             for idx, t in enumerate(master_data_record[chnm][n]["time"]):
                 if master_data_record[chnm][n]["waittrig"][idx]:
                     tlist.append(t)
+            real_time = list(map(lambda s: '{:.3g}'.format(s*1e6),list(map(convert_time_from_clock_cycles, tlist))))
+            diff = list(map(lambda s: '{:.3g}'.format(s*1e6),np.diff(list(map(convert_time_from_clock_cycles, tlist)))))
             print(
                 f"ch {chnm} received {len(tlist)} wait trigger events at times: {tlist} diff: {np.diff(tlist)}"
-                f" real time (us): [{' '.join(list(map(lambda s: '{:.3g}'.format(s*1e6),list(map(convert_time_from_clock_cycles, tlist)))))}]"
-                f" diff: [{' '.join(list(map(lambda s: '{:.3g}'.format(s*1e6),np.diff(list(map(convert_time_from_clock_cycles, tlist))))))}]"
+                f" real time (us): [{' '.join(real_time)}]"
+                f" diff: [{' '.join(diff)}]"
+            )
             )
 
     for chnm in range(8):
