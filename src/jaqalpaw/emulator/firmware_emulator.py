@@ -222,7 +222,6 @@ def print_metadata_output(input_bytes):
                 f" real time (us): [{' '.join(list(real_time))}]"
                 f" diff: [{' '.join(list(diff))}]"
             )
-            )
 
     for chnm in range(8):
         for tone, n in enumerate([0, 4]):  # range(1):
