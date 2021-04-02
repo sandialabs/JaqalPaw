@@ -26,3 +26,21 @@ class Loop(list):
     def __init__(self, *args, repeats=1, **kwargs):
         super().__init__(*args, **kwargs)
         self.repeats = repeats
+
+
+class Branch(list):
+    def __init__(self, *args, repeats=1, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.repeats = repeats
+
+    @property
+    def maxlen(self):
+        return max(map(len, self))
+
+
+class Case(list):
+    def __init__(self, *args, state=0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.state = state
+
+

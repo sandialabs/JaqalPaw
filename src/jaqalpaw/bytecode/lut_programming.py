@@ -16,6 +16,10 @@ from jaqalpaw.bytecode.encoding_parameters import (
     GLUT_BYTECNT_OFFSET,
     GSEQ_BYTECNT_OFFSET,
     GSEQ_ENABLE_OFFSET,
+    GPRGW,
+    ANCILLA_WAIT_OFFSET,
+    CONTINUE_ANCILLA_OFFSET,
+    ANCILLA_COMPILER_TAG_SHIFT,
 )
 
 from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
@@ -106,10 +110,10 @@ def program_GLUT(lut, ch=0):
     byte_count = 0
     BYTELIM = GLUT_BYTECNT
     for addr, data in lut.items():
-        if address_is_invalid(addr, GLUTW):
+        if address_is_invalid(addr, GPRGW):
             raise CircuitCompilerException(
                 f"GLUT programming error, address {addr} ({bin(addr)}) "
-                f"exceeds maximum width of {GLUTW}"
+                f"exceeds maximum width of {GPRGW}"
             )
         if byte_count >= BYTELIM:
             current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
@@ -118,7 +122,7 @@ def program_GLUT(lut, ch=0):
             glut_PROG_list.append(int_to_bytes(current_byte))
             current_byte = 0
             byte_count = 0
-        current_byte <<= 2 * SLUTW + GLUTW
+        current_byte <<= 2 * SLUTW + GPRGW
         current_byte |= (addr << (2 * SLUTW)) | (data[1] << SLUTW) | data[0]
         byte_count += 1
     current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
@@ -127,6 +131,14 @@ def program_GLUT(lut, ch=0):
     glut_PROG_list.append(int_to_bytes(current_byte))
     return glut_PROG_list
 
+def tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla):
+    if byte_count:
+        BYTELIM = GSEQ_BYTECNT
+        current_byte |= wait_for_ancilla << ANCILLA_WAIT_OFFSET
+        current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
+        current_byte |= 1 << GSEQ_ENABLE_OFFSET
+        current_byte |= byte_count << GSEQ_BYTECNT_OFFSET
+        gseq.append(int_to_bytes(current_byte))
 
 def gate_sequence_bytes(glist, ch=0):
     """Generate gate sequence data that is input into the LUT module"""
@@ -134,18 +146,29 @@ def gate_sequence_bytes(glist, ch=0):
     current_byte = 0
     byte_count = 0
     BYTELIM = GSEQ_BYTECNT
+    wait_for_ancilla = 0
     for g in glist:
-        if byte_count >= BYTELIM:
-            current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
-            current_byte |= 1 << GSEQ_ENABLE_OFFSET
-            current_byte |= BYTELIM << GSEQ_BYTECNT_OFFSET
-            gseq.append(int_to_bytes(current_byte))
+        if g & (1<<ANCILLA_COMPILER_TAG_SHIFT):
+            if wait_for_ancilla == 0:
+                tag_gseq_metadata(gseq, current_byte, byte_count, ch, 0)
+                current_byte = 0
+                byte_count = 0
+                wait_for_ancilla = 1
+        else:
+            if wait_for_ancilla:
+                tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
+                current_byte = 0
+                byte_count = 0
+            wait_for_ancilla = 0
+        if byte_count >= BYTELIM:  # or use_previous_ancilla:
+            tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
             current_byte = 0
             byte_count = 0
-        current_byte |= g << (GLUTW * byte_count)
+            if wait_for_ancilla:
+                if wait_for_ancilla == 1:
+                    wait_for_ancilla = 2
+        current_byte |= (g & (2**GLUTW-1)) << (GLUTW * byte_count)
         byte_count += 1
-    current_byte |= (ch & 0b111) << DMA_MUX_OFFSET
-    current_byte |= 1 << GSEQ_ENABLE_OFFSET
-    current_byte |= byte_count << GSEQ_BYTECNT_OFFSET
-    gseq.append(int_to_bytes(current_byte))
+    tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
     return gseq
+

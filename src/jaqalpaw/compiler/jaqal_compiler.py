@@ -12,9 +12,10 @@ from jaqalpaw.bytecode.lut_programming import (
     gate_sequence_bytes,
 )
 from .time_ordering import timesort_bytelist
-from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles
+from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles, Branch, Case
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 from jaqalpaw.utilities.parameters import CLKFREQ
+from jaqalpaw.bytecode.encoding_parameters import ANCILLA_COMPILER_TAG_SHIFT, ANCILLA_STATE_OFFSET
 
 flatten = lambda x: [y for l in x for y in l]
 
@@ -147,20 +148,20 @@ class CircuitCompiler(CircuitConstructor):
             self.unique_gate_identifiers[k][new_key] += 1
             self.gate_sequence_hashes[k].append(new_key)
 
-    def walk_slice(self, pd, hl, reps=1):
+    def walk_slice(self, pd, hl, reps=1, addr_offset=0):
         """Recursively walk through a slice list, including Loop objects
         to map out the PulseData hashes that serve as gate sequence ids"""
         hash_list = hl
         if isinstance(pd, GateSlice):
             for k, v in pd.channel_data.items():
-                new_key = hash(tuple(v))
-                self.unique_gates[k][new_key] = v
-                self.unique_gate_identifiers[k][new_key] += reps
+                new_key = (addr_offset,hash(tuple(v)))
+                self.unique_gates[k][new_key[1]] = v
+                self.unique_gate_identifiers[k][new_key[1]] += reps
                 hash_list[k].append(new_key)
         elif isinstance(pd, Loop):
             hash_list_inner = defaultdict(list)
             for p in pd:
-                self.walk_slice(p, hl=hash_list_inner, reps=pd.repeats * reps)
+                self.walk_slice(p, hl=hash_list_inner, reps=pd.repeats * reps, addr_offset=addr_offset)
             for (
                 k,
                 v,
@@ -168,13 +169,38 @@ class CircuitCompiler(CircuitConstructor):
                 hash_list_inner.items()
             ):  # only repeat the gate ids after walking a Loop
                 hash_list[k].extend(v * pd.repeats)
+        elif isinstance(pd, Branch):
+            hash_list_inner = defaultdict(list)
+            for p in pd:
+                self.walk_slice(p, hl=hash_list_inner, addr_offset=addr_offset)
+            for (
+                    k,
+                    v,
+            ) in (
+                    hash_list_inner.items()
+            ):
+                hash_list[k].append(Branch(v))
+        elif isinstance(pd, Case):
+            hash_list_inner = defaultdict(list)
+            for p in pd:
+                self.walk_slice(p, hl=hash_list_inner, addr_offset=pd.state<<ANCILLA_STATE_OFFSET)
+
+            for (
+                    k,
+                    v,
+            ) in (
+                    hash_list_inner.items()
+            ):
+                hash_list[k].append(v)
         else:
             for p in pd:
-                self.walk_slice(p, hl=hash_list, reps=reps)
+                self.walk_slice(p, hl=hash_list, reps=reps, addr_offset=addr_offset)
 
     def extract_gates(self):
         """Define Gates for LUT packing based on each channel
         in each GateSlice appearing in self.slice_list"""
+        indd = defaultdict(int)
+        self.branches = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         self.unique_gates = defaultdict(dict)
         self.unique_gate_identifiers = defaultdict(lambda: defaultdict(int))
         self.gate_sequence_hashes = defaultdict(list)
@@ -194,9 +220,21 @@ class CircuitCompiler(CircuitConstructor):
             inverted_ordered_gids = {
                 v: k for k, v in self.ordered_gate_identifiers[chid].items()
             }
-            self.gate_sequence_ids[chid] = [
-                inverted_ordered_gids[el] for el in self.gate_sequence_hashes[chid]
-            ]
+            self.gate_sequence_ids[chid] = []
+            for el in self.gate_sequence_hashes[chid]:
+                if isinstance(el, Branch):
+                    sublist = []
+                    for lnum, ll in enumerate(el):
+                        for n, subel in enumerate(ll):
+                            if n == 0:
+                                initlen = sum(len(self.branches[chid][bi][subel[0]]) for bi in range(indd[chid]))  
+                            if lnum == 0:
+                                sublist.append((n+initlen)|(1<<ANCILLA_COMPILER_TAG_SHIFT))
+                            self.branches[chid][indd[chid]][subel[0]].append(inverted_ordered_gids[subel[1]])
+                    self.gate_sequence_ids[chid].extend(sublist)
+                    indd[chid] += 1
+                else:
+                    self.gate_sequence_ids[chid].append(inverted_ordered_gids[el[1]])
 
     def generate_lookup_tables(self):
         """Construct the LUT data in an intermediate representation. The outputs
@@ -219,6 +257,18 @@ class CircuitCompiler(CircuitConstructor):
                 gate_end_addr = addr - 1
                 self.GLUT_data[ch][gid] = (gate_start_addr, gate_end_addr)
                 gid += 1
+        for ch in range(self.CHANNEL_NUM):
+            startind = 0
+            for branch in self.branches[ch].values():
+                maxlen = 0
+                for state, glist in branch.items():
+                    maxlen = max(len(glist), maxlen)
+                    gind = 0
+                    for subgid in glist:
+                        self.GLUT_data[ch][(startind+state+gind)|(1<<11+0*ANCILLA_COMPILER_TAG_SHIFT)] = self.GLUT_data[ch][subgid]
+                        gind += 1
+                startind += maxlen
+
 
     def generate_programming_data(self):
         """Convert the LUT programming IR representations to bytecode"""

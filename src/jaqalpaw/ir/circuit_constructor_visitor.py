@@ -7,7 +7,7 @@ from .ast_utilities import (
     get_gate_data,
     normalize_number,
 )
-from jaqalpaw.utilities.datatypes import Loop
+from jaqalpaw.utilities.datatypes import Loop, Branch, Case
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
 
@@ -81,6 +81,15 @@ class CircuitConstructorVisitor(Visitor):
         """Return a Loop object representing this loop."""
         slice_list = self.visit(loop.statements)
         return Loop(slice_list, repeats=loop.iterations)
+
+    def visit_BranchStatement(self, block):
+        """Return a list of GateSlice's or Loop's from this block."""
+        slice_list = [self.visit(stmt) for stmt in block.statements]
+        return Branch(slice_list)
+
+    def visit_CaseStatement(self, block):
+        slice_list = self.visit(block.statements)
+        return Case(slice_list, state=block.state)
 
     def visit_int(self, obj):
         """Integer gate arguments remain unchanged."""
