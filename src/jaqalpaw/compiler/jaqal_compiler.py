@@ -15,7 +15,10 @@ from .time_ordering import timesort_bytelist
 from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles, Branch, Case
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 from jaqalpaw.utilities.parameters import CLKFREQ
-from jaqalpaw.bytecode.encoding_parameters import ANCILLA_COMPILER_TAG_SHIFT, ANCILLA_STATE_OFFSET
+from jaqalpaw.bytecode.encoding_parameters import (
+    ANCILLA_COMPILER_TAG_SHIFT,
+    ANCILLA_STATE_OFFSET,
+)
 
 flatten = lambda x: [y for l in x for y in l]
 
@@ -154,14 +157,19 @@ class CircuitCompiler(CircuitConstructor):
         hash_list = hl
         if isinstance(pd, GateSlice):
             for k, v in pd.channel_data.items():
-                new_key = (addr_offset,hash(tuple(v)))
+                new_key = (addr_offset, hash(tuple(v)))
                 self.unique_gates[k][new_key[1]] = v
                 self.unique_gate_identifiers[k][new_key[1]] += reps
                 hash_list[k].append(new_key)
         elif isinstance(pd, Loop):
             hash_list_inner = defaultdict(list)
             for p in pd:
-                self.walk_slice(p, hl=hash_list_inner, reps=pd.repeats * reps, addr_offset=addr_offset)
+                self.walk_slice(
+                    p,
+                    hl=hash_list_inner,
+                    reps=pd.repeats * reps,
+                    addr_offset=addr_offset,
+                )
             for (
                 k,
                 v,
@@ -174,23 +182,21 @@ class CircuitCompiler(CircuitConstructor):
             for p in pd:
                 self.walk_slice(p, hl=hash_list_inner, addr_offset=addr_offset)
             for (
-                    k,
-                    v,
-            ) in (
-                    hash_list_inner.items()
-            ):
+                k,
+                v,
+            ) in hash_list_inner.items():
                 hash_list[k].append(Branch(v))
         elif isinstance(pd, Case):
             hash_list_inner = defaultdict(list)
             for p in pd:
-                self.walk_slice(p, hl=hash_list_inner, addr_offset=pd.state<<ANCILLA_STATE_OFFSET)
+                self.walk_slice(
+                    p, hl=hash_list_inner, addr_offset=pd.state << ANCILLA_STATE_OFFSET
+                )
 
             for (
-                    k,
-                    v,
-            ) in (
-                    hash_list_inner.items()
-            ):
+                k,
+                v,
+            ) in hash_list_inner.items():
                 hash_list[k].append(v)
         else:
             for p in pd:
@@ -227,10 +233,17 @@ class CircuitCompiler(CircuitConstructor):
                     for lnum, ll in enumerate(el):
                         for n, subel in enumerate(ll):
                             if n == 0:
-                                initlen = sum(len(self.branches[chid][bi][subel[0]]) for bi in range(indd[chid]))  
+                                initlen = sum(
+                                    len(self.branches[chid][bi][subel[0]])
+                                    for bi in range(indd[chid])
+                                )
                             if lnum == 0:
-                                sublist.append((n+initlen)|(1<<ANCILLA_COMPILER_TAG_SHIFT))
-                            self.branches[chid][indd[chid]][subel[0]].append(inverted_ordered_gids[subel[1]])
+                                sublist.append(
+                                    (n + initlen) | (1 << ANCILLA_COMPILER_TAG_SHIFT)
+                                )
+                            self.branches[chid][indd[chid]][subel[0]].append(
+                                inverted_ordered_gids[subel[1]]
+                            )
                     self.gate_sequence_ids[chid].extend(sublist)
                     indd[chid] += 1
                 else:
@@ -265,10 +278,12 @@ class CircuitCompiler(CircuitConstructor):
                     maxlen = max(len(glist), maxlen)
                     gind = 0
                     for subgid in glist:
-                        self.GLUT_data[ch][(startind+state+gind)|(1<<11+0*ANCILLA_COMPILER_TAG_SHIFT)] = self.GLUT_data[ch][subgid]
+                        self.GLUT_data[ch][
+                            (startind + state + gind)
+                            | (1 << 11 + 0 * ANCILLA_COMPILER_TAG_SHIFT)
+                        ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
-
 
     def generate_programming_data(self):
         """Convert the LUT programming IR representations to bytecode"""

@@ -131,6 +131,7 @@ def program_GLUT(lut, ch=0):
     glut_PROG_list.append(int_to_bytes(current_byte))
     return glut_PROG_list
 
+
 def tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla):
     if byte_count:
         BYTELIM = GSEQ_BYTECNT
@@ -140,6 +141,7 @@ def tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla):
         current_byte |= byte_count << GSEQ_BYTECNT_OFFSET
         gseq.append(int_to_bytes(current_byte))
 
+
 def gate_sequence_bytes(glist, ch=0):
     """Generate gate sequence data that is input into the LUT module"""
     gseq = []
@@ -148,7 +150,7 @@ def gate_sequence_bytes(glist, ch=0):
     BYTELIM = GSEQ_BYTECNT
     wait_for_ancilla = 0
     for g in glist:
-        if g & (1<<ANCILLA_COMPILER_TAG_SHIFT):
+        if g & (1 << ANCILLA_COMPILER_TAG_SHIFT):
             if wait_for_ancilla == 0:
                 tag_gseq_metadata(gseq, current_byte, byte_count, ch, 0)
                 current_byte = 0
@@ -167,8 +169,7 @@ def gate_sequence_bytes(glist, ch=0):
             if wait_for_ancilla:
                 if wait_for_ancilla == 1:
                     wait_for_ancilla = 2
-        current_byte |= (g & (2**GLUTW-1)) << (GLUTW * byte_count)
+        current_byte |= (g & (2 ** GLUTW - 1)) << (GLUTW * byte_count)
         byte_count += 1
     tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
     return gseq
-
