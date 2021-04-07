@@ -1,5 +1,15 @@
 from .datatypes import ClockCycles, Discrete, Spline
 from .parameters import CLKFREQ
+from ..bytecode.binary_conversion import (
+    convert_freq_full,
+    convert_phase_full,
+    convert_amp_full,
+)
+from ..emulator.byte_decoding import (
+    convert_freq_bytes_to_real,
+    convert_phase_bytes_to_real,
+    convert_amp_bytes_to_real,
+)
 
 
 def make_list_hashable(param):
@@ -20,3 +30,31 @@ def delist(x):
         return x[0]
     else:
         return x
+
+
+def to_clock_cycles(dur):
+    if isinstance(dur, ClockCycles):
+        return dur
+    return ClockCycles(dur * CLKFREQ)
+
+
+def to_real_time(dur):
+    if isinstance(dur, ClockCycles):
+        return dur / CLKFREQ
+    return dur
+
+
+def discretize_amplitude(v):
+    return convert_amp_bytes_to_real(convert_amp_full(v))
+
+
+def discretize_frequency(v):
+    return convert_freq_bytes_to_real(convert_freq_full(v))
+
+
+def discretize_phase(v):
+    return convert_phase_bytes_to_real(convert_phase_full(v))
+
+
+def discretize_time(v):
+    return to_real_time(to_clock_cycles(v))
