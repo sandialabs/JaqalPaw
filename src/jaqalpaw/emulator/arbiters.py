@@ -82,7 +82,7 @@ async def spline_engine(
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
         waittrig = (data >> WAIT_TRIG_LSB) & 0b1
-        enablemask = (data >> OUTPUT_EN_LSB) & 0b11
+        enablemask = (data >> OUTPUT_EN_LSB) & 0b1
         mod_type = (data >> MODTYPE_LSB) & 0b111
         shift = (data >> SPLSHIFT_LSB) & 0b11111
         channel = (data >> DMA_MUX_OFFSET) & 0b111
