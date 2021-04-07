@@ -1,8 +1,5 @@
 from collections import UserDict, deque
-
-GADDRW = 6
-SADDRW = 12
-PADDRW = 10
+from jaqalpaw.bytecode.encoding_parameters import GLUTW, GPRGW, SLUTW, PLUTW
 
 
 class URAMException(Exception):
@@ -40,7 +37,15 @@ class URAM(UserDict):
             )
         self.data[key] = value
 
+    def __getitem__(self, key):
+        if key not in self.data:
+            if self.data_width == 2*SLUTW:
+                if (key & (2**GLUTW - 1)) in self.data:
+                    return self.data[(key & (2**GLUTW-1))]
+            return 0
+        return self.data[key]
 
-GLUT = [URAM(address_width=GADDRW, data_width=2 * SADDRW) for _ in range(8)]
-SLUT = [URAM(address_width=SADDRW, data_width=PADDRW) for _ in range(8)]
-PLUT = [URAM(address_width=PADDRW, data_width=256) for _ in range(8)]
+
+GLUT = [URAM(address_width=GPRGW, data_width=2 * SLUTW) for _ in range(8)]
+SLUT = [URAM(address_width=SLUTW, data_width=PLUTW) for _ in range(8)]
+PLUT = [URAM(address_width=PLUTW, data_width=256) for _ in range(8)]

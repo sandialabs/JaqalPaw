@@ -18,9 +18,10 @@ from jaqalpaw.bytecode.encoding_parameters import (
     GLUT_BYTECNT_OFFSET,
     SLUT_BYTECNT_OFFSET,
 )
-from .uram import PADDRW, SADDRW, GLUT, SLUT, PLUT, GADDRW
+from .uram import GLUT, SLUT, PLUT
 from .pdq_spline import pdq_spline
 from jaqalpaw.utilities.parameters import CLKPERIOD, CLOCK_FREQUENCY, MAXAMP
+from jaqalpaw.bytecode.encoding_parameters import GPRGW, GLUTW, SLUTW, PLUTW
 
 tree = lambda: defaultdict(tree)
 
@@ -101,9 +102,9 @@ def parse_GLUT_prog_data(data):
     nwords = (data >> GLUT_BYTECNT_OFFSET) & 0b11111
     channel = (data >> (DMA_MUX_OFFSET)) & 0b111
     for w in range(nwords):
-        sdata = data >> (w * (2 * SADDRW + GADDRW))
-        glut_data = sdata & (2 ** (2 * SADDRW) - 1)
-        glut_addr = (sdata >> (2 * SADDRW)) & (2 ** GADDRW - 1)
+        sdata = data >> (w * (2 * SLUTW + GPRGW))
+        glut_data = sdata & (2 ** (2 * SLUTW) - 1)
+        glut_addr = (sdata >> (2 * SLUTW)) & (2 ** GPRGW - 1)
         GLUT[channel][glut_addr] = glut_data
 
 
@@ -112,16 +113,16 @@ def parse_SLUT_prog_data(data):
     nwords = (data >> SLUT_BYTECNT_OFFSET) & 0b11111
     channel = (data >> DMA_MUX_OFFSET) & 0b111
     for w in range(nwords):
-        sdata = data >> (w * (PADDRW + SADDRW))
-        slut_data = sdata & (2 ** PADDRW - 1)
-        slut_addr = (sdata >> PADDRW) & (2 ** SADDRW - 1)
+        sdata = data >> (w * (PLUTW + SLUTW))
+        slut_data = sdata & (2 ** PLUTW - 1)
+        slut_addr = (sdata >> PLUTW) & (2 ** SLUTW - 1)
         SLUT[channel][slut_addr] = slut_data
 
 
 def parse_PLUT_prog_data(data):
     """Program PLUT with input data word"""
     newdata = int.from_bytes(data, byteorder="little", signed=False)
-    plut_addr = (newdata >> PLUT_BYTECNT_OFFSET) & (2 ** PADDRW - 1)
+    plut_addr = (newdata >> PLUT_BYTECNT_OFFSET) & (2 ** PLUTW - 1)
     channel = (newdata >> DMA_MUX_OFFSET) & 0b111
     PLUT[channel][plut_addr] = data
 
@@ -129,8 +130,8 @@ def parse_PLUT_prog_data(data):
 def iterate_GLUT_bounds(gid, channel):
     """Get all PLUT data for an individual gate"""
     bounds_bytes = GLUT[channel][gid]
-    start = bounds_bytes & (2 ** SADDRW - 1)
-    stop = (bounds_bytes >> SADDRW) & (2 ** SADDRW - 1)
+    start = bounds_bytes & (2 ** SLUTW - 1)
+    stop = (bounds_bytes >> SLUTW) & (2 ** SLUTW - 1)
     for sid in range(start, stop + 1):
         yield PLUT[channel][SLUT[channel][sid]]
 
@@ -143,8 +144,8 @@ def parse_gate_seq_data(data):
     plut_list = []
     gidlist = []
     for g in range(prog_byte_cnt):
-        gid = newdata & (2 ** GADDRW - 1)
-        newdata >>= GADDRW
+        gid = newdata & (2 ** GLUTW - 1)
+        newdata >>= GLUTW
         gidlist.append(gid)
         for plut_data in iterate_GLUT_bounds(gid, channel):
             plut_list.append(plut_data)
