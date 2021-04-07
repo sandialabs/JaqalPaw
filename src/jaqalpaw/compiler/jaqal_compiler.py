@@ -280,7 +280,7 @@ class CircuitCompiler(CircuitConstructor):
                     for subgid in glist:
                         self.GLUT_data[ch][
                             (startind + state + gind)
-                            | (1 << 11 + 0 * ANCILLA_COMPILER_TAG_SHIFT)
+                            | (1 << ANCILLA_COMPILER_TAG_SHIFT)
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
