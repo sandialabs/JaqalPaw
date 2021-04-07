@@ -5,9 +5,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
     CLR_FRAME_LSB,
     APPLY_EOF_LSB,
 )
-from .uram import GADDRW, SADDRW, PADDRW, GLUT, SLUT, PLUT, URAM
 from .byte_decoding import *
-import copy
 
 
 def construct_fifos(
