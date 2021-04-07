@@ -6,9 +6,22 @@ from .ast_utilities import (
     is_total_gate,
     get_gate_data,
     normalize_number,
+    get_macro_data,
 )
-from jaqalpaw.utilities.datatypes import Loop, Branch, Case
+from jaqalpaw.utilities.datatypes import Loop, Branch, Case, Parallel, Sequential
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
+
+
+def is_block(gdata):
+    """Checks if input is a block type synonym"""
+    if type(gdata) in (Parallel, Sequential):
+        return True
+    return False
+
+
+def is_loop(gdata):
+    """Checks if instance is Loop type synonym"""
+    return isinstance(gdata, Loop)
 
 
 def convert_circuit_to_gateslices(pulse_definition, circuit, num_channels):
@@ -29,6 +42,70 @@ def make_all_durations_equal(obj):
         obj.make_durations_equal()
 
 
+class MacroConstructor:
+    def __init__(self, channel_num):
+        self.CHANNEL_NUM = channel_num
+        self.slice_list = []
+
+    @staticmethod
+    def transform_gate_arg(arg):
+        """Convert qubit registers to numbers, and return other arguments directly"""
+        return arg
+
+    def construct_gate(self, gate):
+        """Constructs a GateSlice with the relevant PulseData given by the associated PulseDefinition"""
+        gslice = GateSlice(num_channels=self.CHANNEL_NUM)
+        for pd in gate:
+            if pd.dur > 3:
+                gslice.channel_data[pd.channel].append(pd)
+        return gslice
+
+    def construct_gate_block(self, gate_block):
+        """Walk AST parallel/sequential blocks"""
+        gslice = GateSlice(num_channels=self.CHANNEL_NUM)
+        glist = []
+        if isinstance(gate_block, Parallel):
+            for g in gate_block:
+                if is_block(g):
+                    gslice.merge(self.construct_gate_block(g))
+                else:
+                    gslice.merge(self.construct_gate(g))
+            return gslice.make_durations_equal()
+        else:
+            for g in gate_block:
+                if is_block(g):
+                    glist.append(self.construct_gate_block(g))
+                elif is_loop(g):
+                    glist.append(self.construct_gate_loop(g))
+                elif isinstance(g, list) and isinstance(g[0], list):
+                    glist.append(self.construct_gate_block(Sequential(g)))
+                else:
+                    glist.append(self.construct_gate(g).make_durations_equal())
+        return glist
+
+    def construct_gate_loop(self, g):
+        """Walk AST for 'loop' blocks"""
+        glist = Loop(repeats=g.repeats)
+        new_slice = self.construct_gate_block(Sequential(g))
+        glist.extend(new_slice)
+        return glist
+
+    def construct_circuit(self, circ_data, init=True):
+        """Generate full circuit from circ_data. Circuit is in the form of PulseData objects."""
+        if init:
+            self.slice_list = []
+        for g in circ_data:
+            if is_block(g):
+                self.slice_list.append(self.construct_gate_block(g))
+            elif is_loop(g):
+                self.slice_list.append(self.construct_gate_loop(g))
+            elif isinstance(g, list) and isinstance(g[0], list):
+                self.construct_circuit(g, init=False)
+            else:
+                self.slice_list.append(self.construct_gate(g).make_durations_equal())
+        return self.slice_list
+
+
 class CircuitConstructorVisitor(Visitor):
     """Convert a Circuit into a list of GateSlice objects."""
 
@@ -36,6 +113,7 @@ class CircuitConstructorVisitor(Visitor):
         super().__init__()
         self.pulse_definition = pulse_definition
         self.num_channels = num_channels
+        self.macro_constructor = MacroConstructor(channel_num=self.num_channels)
 
     def visit_Circuit(self, circuit):
         slice_list = self.visit(circuit.body)
@@ -60,7 +138,9 @@ class CircuitConstructorVisitor(Visitor):
     def visit_GateStatement(self, gate):
         """Create a list of a single GateSlice representing this gate."""
         gslice = GateSlice(num_channels=self.num_channels)
-        if not hasattr(self.pulse_definition, "gate_" + gate.name):
+        if not hasattr(self.pulse_definition, "gate_" + gate.name) and not hasattr(
+            self.pulse_definition, "macro_" + gate.name
+        ):
             raise CircuitCompilerException(f"Gate {gate.name} not found")
         if is_total_gate(gate.name):
             args = [self.num_channels]
@@ -70,6 +150,9 @@ class CircuitConstructorVisitor(Visitor):
                 )
         else:
             args = [self.visit(garg) for garg in gate.parameters.values()]
+        if hasattr(self.pulse_definition, "macro_" + gate.name):
+            macro_data = get_macro_data(self.pulse_definition, gate.name, args)
+            return self.macro_constructor.construct_circuit(macro_data)
         gate_data = get_gate_data(self.pulse_definition, gate.name, args)
         if gate_data is not None:
             for pd in gate_data:

@@ -42,3 +42,11 @@ class Case(list):
     def __init__(self, *args, state=0, **kwargs):
         super().__init__(*args, **kwargs)
         self.state = state
+
+
+class Parallel(list):
+    pass
+
+
+class Sequential(list):
+    pass

@@ -46,10 +46,27 @@ def get_gate_data(pulse_definition, gate_name, args):
     return pulse_gate(*args)
 
 
+def get_macro_data(pulse_definition, macro_name, args):
+    """Evaluate and return the gate data for a macro with the given
+    arguments. The macro is looked up in pulse_definition then evaluated
+    with args, which must be converted to numbers."""
+    if not all(isinstance(arg, (int, float)) for arg in args):
+        # This is a programming error that should be fixed
+        raise CircuitCompilerException(f"Macro {macro_name}: Bad arg type in {args}")
+    pulse_macro = getattr(pulse_definition, make_macro_function_name(macro_name))
+    return pulse_macro(*args)
+
+
 def make_gate_function_name(gate_name):
     """Make the name of the function to look up a gate by in the pulse
     definition object."""
     return f"gate_{gate_name}"
+
+
+def make_macro_function_name(gate_name):
+    """Make the name of the function to look up a macro by in the pulse
+    definition object."""
+    return f"macro_{gate_name}"
 
 
 def merge_slice_lists(dst_list, src_list):
