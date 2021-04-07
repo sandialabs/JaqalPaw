@@ -3,6 +3,7 @@ from jaqalpaq.core import CircuitBuilder
 from .uram import *
 from .arbiters import *
 import numpy as np
+import copy
 
 # from emulator.byte_decoding import decode_word, GLUT, SLUT, PLUT, mod_type_dict#, tree
 # master_data_record = {c: {d:{'time':copy.copy([0]), 'data':copy.copy([0])} for d in range(8)} for c in range(8)}
