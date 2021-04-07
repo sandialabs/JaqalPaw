@@ -39,9 +39,9 @@ class URAM(UserDict):
 
     def __getitem__(self, key):
         if key not in self.data:
-            if self.data_width == 2*SLUTW:
-                if (key & (2**GLUTW - 1)) in self.data:
-                    return self.data[(key & (2**GLUTW-1))]
+            if self.data_width == 2 * SLUTW:
+                if (key & (2 ** GLUTW - 1)) in self.data:
+                    return self.data[(key & (2 ** GLUTW - 1))]
             return 0
         return self.data[key]
 
