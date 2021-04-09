@@ -21,6 +21,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
     ANCILLA_CONTINUE_LSB,
     ANCILLA_COMPILER_TAG_BIT,
     PER_BOARD_CH_MASK,
+    GateSequenceMode,
 )
 
 from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
@@ -145,7 +146,7 @@ def tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla):
 
     """
     if byte_count:
-        current_byte |= wait_for_ancilla << ANCILLA_WAIT_LSB
+        current_byte |= wait_for_ancilla.value << ANCILLA_WAIT_LSB
         current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
         current_byte |= 1 << GSEQ_ENABLE_LSB
         current_byte |= byte_count << GSEQ_BYTECNT_LSB
@@ -158,27 +159,27 @@ def gate_sequence_bytes(glist, ch=0):
     current_byte = 0
     byte_count = 0
     BYTELIM = GSEQ_BYTECNT
-    wait_for_ancilla = 0
+    wait_for_ancilla = GateSequenceMode.standard
     for g in glist:
         if g & (1 << ANCILLA_COMPILER_TAG_BIT):
-            if wait_for_ancilla == 0:
-                tag_gseq_metadata(gseq, current_byte, byte_count, ch, 0)
-                current_byte = 0
-                byte_count = 0
-                wait_for_ancilla = 1
-        else:
-            if wait_for_ancilla:
+            if wait_for_ancilla == GateSequenceMode.standard:
                 tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
                 current_byte = 0
                 byte_count = 0
-            wait_for_ancilla = 0
+                wait_for_ancilla = GateSequenceMode.start_branch
+        else:
+            if wait_for_ancilla != GateSequenceMode.standard:
+                tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
+                current_byte = 0
+                byte_count = 0
+            wait_for_ancilla = GateSequenceMode.standard
         if byte_count >= BYTELIM:  # or use_previous_ancilla:
             tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
             current_byte = 0
             byte_count = 0
-            if wait_for_ancilla:
-                if wait_for_ancilla == 1:
-                    wait_for_ancilla = 2
+            if wait_for_ancilla != GateSequenceMode.standard:
+                if wait_for_ancilla == GateSequenceMode.start_branch:
+                    wait_for_ancilla = GateSequenceMode.continue_branch
         current_byte |= (g & (2 ** GLUTW - 1)) << (GLUTW * byte_count)
         byte_count += 1
     tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)

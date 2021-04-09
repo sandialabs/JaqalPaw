@@ -1,3 +1,5 @@
+from enum import Enum
+
 ENDIANNESS = "little"
 MAXLEN = 256 // 8  # Number of bytes in a single transfer
 
@@ -57,6 +59,17 @@ SLUT_BYTECNT_LSB = 236  # Number of packed SLUT programming words
 GSEQ_BYTECNT_LSB = 239  # Number of packed gate sequence identifiers
 PLUT_ADDR_LSB = 229  # LSB for address word when programming PLUT
 DMA_MUX_LSB = 220  # LSB for routing to channel out of DMA
+
+
+# The compiler needs to incorporate a tri-state comparison for differentiating
+# between different gate sequence modes, such as a conventional gate sequence
+# versus a new ancilla measurement, or a continuation of an ancilla measurement
+# This is captured using the following Enum type
+class GateSequenceMode(Enum):
+    standard = 0
+    start_branch = 1
+    continue_branch = 2
+
 
 # The compiler needs to handle multiple boards, each board has 8 output
 # channels. When the input code targets multiple boards, the channel
