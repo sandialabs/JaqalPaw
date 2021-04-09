@@ -133,8 +133,17 @@ def program_GLUT(lut, ch=0):
 
 
 def tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla):
+    """Gate sequence words pack a series of gate identifiers used for lookup
+    in the GLUT. Because these gate ids are small, we can fit multiple into
+    a single transfer. This function sets the metadata for indicating the
+    number of gate ids being packed, and the sequence type:
+
+        1) A standard gate sequence
+        2) A gate sequence that depends on a new ancilla measurement
+        3) A gate sequence that is a continuation of the previous ancilla result
+
+    """
     if byte_count:
-        BYTELIM = GSEQ_BYTECNT
         current_byte |= wait_for_ancilla << ANCILLA_WAIT_LSB
         current_byte |= (ch & 0b111) << DMA_MUX_LSB
         current_byte |= 1 << GSEQ_ENABLE_LSB
