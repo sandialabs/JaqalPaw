@@ -20,6 +20,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
     ANCILLA_WAIT_LSB,
     ANCILLA_CONTINUE_LSB,
     ANCILLA_COMPILER_TAG_BIT,
+    PER_BOARD_CH_MASK,
 )
 
 from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
@@ -67,7 +68,7 @@ def program_PLUT(lut, ch=0):
                 f"exceeds maximum width of {PLUTW}"
             )
         intdata = bytes_to_int(data)
-        intdata |= (ch & 0b111) << DMA_MUX_LSB
+        intdata |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
         intdata |= PROGPLUT << PROG_MODE_LSB
         intdata |= addr << PLUT_ADDR_LSB
         plut_PROG_list.append(int_to_bytes(intdata))
@@ -87,7 +88,7 @@ def program_SLUT(lut, ch=0):
                 f"exceeds maximum width of {SLUTW}"
             )
         if byte_count >= BYTELIM:
-            current_byte |= (ch & 0b111) << DMA_MUX_LSB
+            current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
             current_byte |= PROGSLUT << PROG_MODE_LSB
             current_byte |= BYTELIM << SLUT_BYTECNT_LSB
             slut_PROG_list.append(int_to_bytes(current_byte))
@@ -96,7 +97,7 @@ def program_SLUT(lut, ch=0):
         current_byte <<= SLUTW + PLUTW
         current_byte |= (addr << PLUTW) | data
         byte_count += 1
-    current_byte |= (ch & 0b111) << DMA_MUX_LSB
+    current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
     current_byte |= PROGSLUT << PROG_MODE_LSB
     current_byte |= byte_count << SLUT_BYTECNT_LSB
     slut_PROG_list.append(int_to_bytes(current_byte))
@@ -116,7 +117,7 @@ def program_GLUT(lut, ch=0):
                 f"exceeds maximum width of {GPRGW}"
             )
         if byte_count >= BYTELIM:
-            current_byte |= (ch & 0b111) << DMA_MUX_LSB
+            current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
             current_byte |= PROGGLUT << PROG_MODE_LSB
             current_byte |= byte_count << GLUT_BYTECNT_LSB
             glut_PROG_list.append(int_to_bytes(current_byte))
@@ -125,7 +126,7 @@ def program_GLUT(lut, ch=0):
         current_byte <<= 2 * SLUTW + GPRGW
         current_byte |= (addr << (2 * SLUTW)) | (data[1] << SLUTW) | data[0]
         byte_count += 1
-    current_byte |= (ch & 0b111) << DMA_MUX_LSB
+    current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
     current_byte |= PROGGLUT << PROG_MODE_LSB
     current_byte |= byte_count << GLUT_BYTECNT_LSB
     glut_PROG_list.append(int_to_bytes(current_byte))
@@ -145,7 +146,7 @@ def tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla):
     """
     if byte_count:
         current_byte |= wait_for_ancilla << ANCILLA_WAIT_LSB
-        current_byte |= (ch & 0b111) << DMA_MUX_LSB
+        current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
         current_byte |= 1 << GSEQ_ENABLE_LSB
         current_byte |= byte_count << GSEQ_BYTECNT_LSB
         gseq.append(int_to_bytes(current_byte))

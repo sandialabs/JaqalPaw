@@ -58,6 +58,13 @@ GSEQ_BYTECNT_LSB = 239  # Number of packed gate sequence identifiers
 PLUT_ADDR_LSB = 229  # LSB for address word when programming PLUT
 DMA_MUX_LSB = 220  # LSB for routing to channel out of DMA
 
+# The compiler needs to handle multiple boards, each board has 8 output
+# channels. When the input code targets multiple boards, the channel
+# number can exceed 8, in which case a separate board is indicated, but
+# the channel on that board needs to be calculated modulo 8 and is
+# performed by using PER_BOARD_CH_MASK
+PER_BOARD_CH_MASK = 0b111  # Bit mask for channel routing for DMA MUX
+
 # Smallest LSB used for setting packing limits on programming data.
 # This depends on the above metadata LSBs
 PACKING_LIMIT_LSB = min(
