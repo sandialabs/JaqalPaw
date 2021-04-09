@@ -16,8 +16,8 @@ from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles, Branch, Case
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 from jaqalpaw.utilities.parameters import CLKFREQ
 from jaqalpaw.bytecode.encoding_parameters import (
-    ANCILLA_COMPILER_TAG_SHIFT,
-    ANCILLA_STATE_OFFSET,
+    ANCILLA_COMPILER_TAG_BIT,
+    ANCILLA_STATE_LSB,
 )
 
 flatten = lambda x: [y for l in x for y in l]
@@ -190,7 +190,7 @@ class CircuitCompiler(CircuitConstructor):
             hash_list_inner = defaultdict(list)
             for p in pd:
                 self.walk_slice(
-                    p, hl=hash_list_inner, addr_offset=pd.state << ANCILLA_STATE_OFFSET
+                    p, hl=hash_list_inner, addr_offset=pd.state << ANCILLA_STATE_LSB
                 )
 
             for (
@@ -239,7 +239,7 @@ class CircuitCompiler(CircuitConstructor):
                                 )
                             if lnum == 0:
                                 sublist.append(
-                                    (n + initlen) | (1 << ANCILLA_COMPILER_TAG_SHIFT)
+                                    (n + initlen) | (1 << ANCILLA_COMPILER_TAG_BIT)
                                 )
                             self.branches[chid][indd[chid]][subel[0]].append(
                                 inverted_ordered_gids[subel[1]]
@@ -279,8 +279,7 @@ class CircuitCompiler(CircuitConstructor):
                     gind = 0
                     for subgid in glist:
                         self.GLUT_data[ch][
-                            (startind + state + gind)
-                            | (1 << ANCILLA_COMPILER_TAG_SHIFT)
+                            (startind + state + gind) | (1 << ANCILLA_COMPILER_TAG_BIT)
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen

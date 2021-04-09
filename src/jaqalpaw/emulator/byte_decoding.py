@@ -7,16 +7,16 @@ from jaqalpaw.bytecode.binary_conversion import (
     map_from_bytes,
 )
 from jaqalpaw.bytecode.encoding_parameters import (
-    PLUT_BYTECNT_OFFSET,
-    DMA_MUX_OFFSET,
-    GSEQ_BYTECNT_OFFSET,
+    PLUT_ADDR_LSB,
+    DMA_MUX_LSB,
+    GSEQ_BYTECNT_LSB,
     MODTYPE_LSB,
     SPLSHIFT_LSB,
-    PROG_MODE_OFFSET,
+    PROG_MODE_LSB,
     WAIT_TRIG_LSB,
     OUTPUT_EN_LSB,
-    GLUT_BYTECNT_OFFSET,
-    SLUT_BYTECNT_OFFSET,
+    GLUT_BYTECNT_LSB,
+    SLUT_BYTECNT_LSB,
 )
 from .uram import GLUT, SLUT, PLUT
 from .pdq_spline import pdq_spline
@@ -99,8 +99,8 @@ mod_type_dict = {
 
 def parse_GLUT_prog_data(data):
     """Program GLUT with input data word"""
-    nwords = (data >> GLUT_BYTECNT_OFFSET) & 0b11111
-    channel = (data >> (DMA_MUX_OFFSET)) & 0b111
+    nwords = (data >> GLUT_BYTECNT_LSB) & 0b11111
+    channel = (data >> (DMA_MUX_LSB)) & 0b111
     for w in range(nwords):
         sdata = data >> (w * (2 * SLUTW + GPRGW))
         glut_data = sdata & (2 ** (2 * SLUTW) - 1)
@@ -110,8 +110,8 @@ def parse_GLUT_prog_data(data):
 
 def parse_SLUT_prog_data(data):
     """Program SLUT with input data word"""
-    nwords = (data >> SLUT_BYTECNT_OFFSET) & 0b11111
-    channel = (data >> DMA_MUX_OFFSET) & 0b111
+    nwords = (data >> SLUT_BYTECNT_LSB) & 0b11111
+    channel = (data >> DMA_MUX_LSB) & 0b111
     for w in range(nwords):
         sdata = data >> (w * (PLUTW + SLUTW))
         slut_data = sdata & (2 ** PLUTW - 1)
@@ -122,8 +122,8 @@ def parse_SLUT_prog_data(data):
 def parse_PLUT_prog_data(data):
     """Program PLUT with input data word"""
     newdata = int.from_bytes(data, byteorder="little", signed=False)
-    plut_addr = (newdata >> PLUT_BYTECNT_OFFSET) & (2 ** PLUTW - 1)
-    channel = (newdata >> DMA_MUX_OFFSET) & 0b111
+    plut_addr = (newdata >> PLUT_ADDR_LSB) & (2 ** PLUTW - 1)
+    channel = (newdata >> DMA_MUX_LSB) & 0b111
     PLUT[channel][plut_addr] = data
 
 
@@ -138,8 +138,8 @@ def iterate_GLUT_bounds(gid, channel):
 
 def parse_gate_seq_data(data):
     """Get sequence of gates to run from input data"""
-    prog_byte_cnt = (data >> GSEQ_BYTECNT_OFFSET) & 0b111111
-    channel = (data >> DMA_MUX_OFFSET) & 0b111
+    prog_byte_cnt = (data >> GSEQ_BYTECNT_LSB) & 0b111111
+    channel = (data >> DMA_MUX_LSB) & 0b111
     newdata = data
     plut_list = []
     gidlist = []
@@ -167,9 +167,9 @@ def decode_word(raw_data, master_data_record, sequence_mode=False):
     data = int.from_bytes(raw_data, byteorder="little", signed=False)
     mod_type = (data >> MODTYPE_LSB) & 0b111
     shift = (data >> SPLSHIFT_LSB) & 0b11111
-    prog_mode = (data >> PROG_MODE_OFFSET) & 0b111
+    prog_mode = (data >> PROG_MODE_LSB) & 0b111
     prog_byte_cnt = None
-    channel = (data >> DMA_MUX_OFFSET) & 0b111
+    channel = (data >> DMA_MUX_LSB) & 0b111
     dur, U0, U1, U2, U3 = None, None, None, None, None
     waittrig = (data >> WAIT_TRIG_LSB) & 0b1
     enablemask = (data >> OUTPUT_EN_LSB) & 0b11
@@ -178,19 +178,19 @@ def decode_word(raw_data, master_data_record, sequence_mode=False):
         mode = mode_enum["bypass"]
         dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
     elif prog_mode == 0b001:
-        prog_byte_cnt = (data >> GLUT_BYTECNT_OFFSET) & 0b11111111
+        prog_byte_cnt = (data >> GLUT_BYTECNT_LSB) & 0b11111111
         mode = mode_enum["prog_glut"]
         parse_GLUT_prog_data(data)
     elif prog_mode == 0b010:
-        prog_byte_cnt = (data >> SLUT_BYTECNT_OFFSET) & 0b11111111
+        prog_byte_cnt = (data >> SLUT_BYTECNT_LSB) & 0b11111111
         mode = mode_enum["prog_slut"]
         parse_SLUT_prog_data(data)
     elif prog_mode == 0b011:
-        prog_byte_cnt = (data >> PLUT_BYTECNT_OFFSET) & 0b11111111
+        prog_byte_cnt = (data >> PLUT_ADDR_LSB) & 0b11111111
         mode = mode_enum["prog_plut"]
         parse_PLUT_prog_data(raw_data)
     elif prog_mode == 0b100 or prog_mode == 0b101 or prog_mode == 0b110:
-        prog_byte_cnt = (data >> GSEQ_BYTECNT_OFFSET) & 0b11111111
+        prog_byte_cnt = (data >> GSEQ_BYTECNT_LSB) & 0b11111111
         mode = mode_enum["run"]
         for gs_data in parse_gate_seq_data(data):
             master_data_record = decode_word(

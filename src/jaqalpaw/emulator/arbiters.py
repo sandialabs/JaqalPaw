@@ -31,7 +31,7 @@ async def DMA_arbiter(name, queue, data_output_queues):
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
-        channel = (data >> (DMA_MUX_OFFSET)) & 0b111
+        channel = (data >> DMA_MUX_LSB) & 0b111
         await data_output_queues[channel].put(raw_data)
         queue.task_done()
 
@@ -44,8 +44,8 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
-        mod_type = (data >> (MODTYPE_LSB)) & 0b111
-        prog_mode = (data >> (PROG_MODE_OFFSET)) & 0b111
+        mod_type = (data >> MODTYPE_LSB) & 0b111
+        prog_mode = (data >> PROG_MODE_LSB) & 0b111
         if prog_mode == 0b111:
             await data_output_queues[mod_type].put(raw_data)
         elif prog_mode == 0b001:
@@ -58,7 +58,7 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
             for gs_data in parse_gate_seq_data(data):
                 new_mod_type = (
                     int.from_bytes(gs_data, byteorder="little", signed=False)
-                    >> (MODTYPE_LSB)
+                    >> MODTYPE_LSB
                 ) & 0b111
                 await data_output_queues[new_mod_type].put(gs_data)
         queue.task_done()
@@ -83,7 +83,7 @@ async def spline_engine(
         enablemask = (data >> OUTPUT_EN_LSB) & 0b1
         mod_type = (data >> MODTYPE_LSB) & 0b111
         shift = (data >> SPLSHIFT_LSB) & 0b11111
-        channel = (data >> DMA_MUX_OFFSET) & 0b111
+        channel = (data >> DMA_MUX_LSB) & 0b111
         reset_accum = (data >> CLR_FRAME_LSB) & 0b1
         apply_at_eof = (data >> APPLY_EOF_LSB) & 0b1
         dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
