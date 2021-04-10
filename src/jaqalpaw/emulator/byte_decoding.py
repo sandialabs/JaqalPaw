@@ -29,15 +29,15 @@ mdr = tree()
 
 
 def convert_phase_bytes_to_real(data):
-    return data / (2 ** 40 - 1) * 360.0
+    return data / ((1 << 40) - 1) * 360.0
 
 
 def convert_freq_bytes_to_real(data):
-    return data / (2 ** 40 - 1) * CLOCK_FREQUENCY
+    return data / ((1 << 40) - 1) * CLOCK_FREQUENCY
 
 
 def convert_amp_bytes_to_real(data):
-    return (int(data) >> 23) / (2 ** 16 - 1) * MAXAMP
+    return (int(data) >> 23) / ((1 << 16 - 1) - 1) * MAXAMP
 
 
 def convert_time_from_clock_cycles(data):
@@ -103,8 +103,8 @@ def parse_GLUT_prog_data(data):
     channel = (data >> (DMA_MUX_LSB)) & 0b111
     for w in range(nwords):
         sdata = data >> (w * (2 * SLUTW + GPRGW))
-        glut_data = sdata & (2 ** (2 * SLUTW) - 1)
-        glut_addr = (sdata >> (2 * SLUTW)) & (2 ** GPRGW - 1)
+        glut_data = sdata & ((1 << (2 * SLUTW)) - 1)
+        glut_addr = (sdata >> (2 * SLUTW)) & ((1 << GPRGW) - 1)
         GLUT[channel][glut_addr] = glut_data
 
 
@@ -114,15 +114,15 @@ def parse_SLUT_prog_data(data):
     channel = (data >> DMA_MUX_LSB) & 0b111
     for w in range(nwords):
         sdata = data >> (w * (PLUTW + SLUTW))
-        slut_data = sdata & (2 ** PLUTW - 1)
-        slut_addr = (sdata >> PLUTW) & (2 ** SLUTW - 1)
+        slut_data = sdata & ((1 << PLUTW) - 1)
+        slut_addr = (sdata >> PLUTW) & ((1 << SLUTW) - 1)
         SLUT[channel][slut_addr] = slut_data
 
 
 def parse_PLUT_prog_data(data):
     """Program PLUT with input data word"""
     newdata = int.from_bytes(data, byteorder="little", signed=False)
-    plut_addr = (newdata >> PLUT_ADDR_LSB) & (2 ** PLUTW - 1)
+    plut_addr = (newdata >> PLUT_ADDR_LSB) & ((1 << PLUTW) - 1)
     channel = (newdata >> DMA_MUX_LSB) & 0b111
     PLUT[channel][plut_addr] = data
 
@@ -130,8 +130,8 @@ def parse_PLUT_prog_data(data):
 def iterate_GLUT_bounds(gid, channel):
     """Get all PLUT data for an individual gate"""
     bounds_bytes = GLUT[channel][gid]
-    start = bounds_bytes & (2 ** SLUTW - 1)
-    stop = (bounds_bytes >> SLUTW) & (2 ** SLUTW - 1)
+    start = bounds_bytes & ((1 << SLUTW) - 1)
+    stop = (bounds_bytes >> SLUTW) & ((1 << SLUTW) - 1)
     for sid in range(start, stop + 1):
         yield PLUT[channel][SLUT[channel][sid]]
 
@@ -144,7 +144,7 @@ def parse_gate_seq_data(data):
     plut_list = []
     gidlist = []
     for g in range(prog_byte_cnt):
-        gid = newdata & (2 ** GLUTW - 1)
+        gid = newdata & ((1 << GLUTW) - 1)
         newdata >>= GLUTW
         gidlist.append(gid)
         for plut_data in iterate_GLUT_bounds(gid, channel):
@@ -226,12 +226,12 @@ def decode_word(raw_data, master_data_record, sequence_mode=False):
             master_data_record[channel][mod_type]["waittrig"].append(waittrig)
             master_data_record[channel][mod_type]["enablemask"].append(enablemask)
         else:
-            U1_shift = U1 / (2 ** (shift * 1))
-            U2_shift = U2 / (2 ** (shift * 2))
-            U3_shift = U3 / (2 ** (shift * 3))
-            U1_rshift = U1_real / (2 ** shift)
-            U2_rshift = U2_real / (2 ** (shift * 2))
-            U3_rshift = U3_real / (2 ** (shift * 3))
+            U1_shift = U1 / (1 << (shift * 1))
+            U2_shift = U2 / (1 << (shift * 2))
+            U3_shift = U3 / (1 << (shift * 3))
+            U1_rshift = U1_real / (1 << shift)
+            U2_rshift = U2_real / (1 << (shift * 2))
+            U3_rshift = U3_real / (1 << (shift * 3))
             coeffs = np.zeros((4, 1))
             coeffs[0, 0] = U3_shift
             coeffs[1, 0] = U2_shift

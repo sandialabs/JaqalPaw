@@ -128,9 +128,9 @@ async def spline_engine(
             U2_shift = U2
             U3_shift = U3
             # Calculate the same for real values for monitoring purposes only
-            U1_rshift = U1_real / (2 ** shift)
-            U2_rshift = U2_real / (2 ** (shift * 2))
-            U3_rshift = U3_real / (2 ** (shift * 3))
+            U1_rshift = U1_real / (1 << shift)
+            U2_rshift = U2_real / (1 << (shift * 2))
+            U3_rshift = U3_real / (1 << (shift * 3))
             # Pack the coefficients in a format that can be handled by the spline engine emulator
             coeffs = np.zeros((4, 1))
             coeffs[0, 0] = U3_shift

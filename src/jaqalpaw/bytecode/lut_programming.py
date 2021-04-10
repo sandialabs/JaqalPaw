@@ -28,7 +28,7 @@ from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
 
 
 def address_is_invalid(addr, allowed_address_bits):
-    return addr & (2 ** allowed_address_bits - 1) != addr
+    return addr & ((1 << allowed_address_bits) - 1) != addr
 
 
 def generate_gate_pulse_sequence(gateList, mapping):
@@ -180,7 +180,7 @@ def gate_sequence_bytes(glist, ch=0):
             if wait_for_ancilla != GateSequenceMode.standard:
                 if wait_for_ancilla == GateSequenceMode.start_branch:
                     wait_for_ancilla = GateSequenceMode.continue_branch
-        current_byte |= (g & (2 ** GLUTW - 1)) << (GLUTW * byte_count)
+        current_byte |= (g & ((1 << GLUTW) - 1)) << (GLUTW * byte_count)
         byte_count += 1
     tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
     return gseq

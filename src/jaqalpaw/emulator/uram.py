@@ -23,7 +23,7 @@ class URAM(UserDict):
             raise URAMException(f"URAM address must be type int, not {type(key)}")
         if not isinstance(value, int) and not isinstance(value, bytes):
             raise URAMException(f"URAM value must be type int, not {type(value)}")
-        newkey = key & (2 ** self.address_width - 1)
+        newkey = key & ((1 << self.address_width) - 1)
         newvalue = value
         if newkey != key:
             raise URAMException(
@@ -40,8 +40,8 @@ class URAM(UserDict):
     def __getitem__(self, key):
         if key not in self.data:
             if self.data_width == 2 * SLUTW:
-                if (key & (2 ** GLUTW - 1)) in self.data:
-                    return self.data[(key & (2 ** GLUTW - 1))]
+                if (key & ((1 << GLUTW) - 1)) in self.data:
+                    return self.data[(key & ((1 << GLUTW) - 1))]
             return 0
         return self.data[key]
 
