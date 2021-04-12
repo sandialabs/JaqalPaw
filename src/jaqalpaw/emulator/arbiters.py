@@ -4,6 +4,8 @@ import asyncio
 from jaqalpaw.bytecode.encoding_parameters import (
     CLR_FRAME_LSB,
     APPLY_EOF_LSB,
+    ANCILLA_COMPILER_TAG_BIT,
+    ANCILLA_STATE_LSB,
 )
 from .byte_decoding import *
 
@@ -55,7 +57,22 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
         elif prog_mode == 0b011:
             parse_PLUT_prog_data(raw_data)
         elif prog_mode == 0b100 or prog_mode == 0b101 or prog_mode == 0b110:
-            for gs_data in parse_gate_seq_data(data):
+            if prog_mode == 0b101 or prog_mode == 0b110:
+                # at the very least we'll need the streamed data to be augmented
+                # by the tag bit. Additional cases can be applied by ORing the
+                # "OR address", oraddr, (representing external hardware input)
+                # via some (binary) state by adding the following line after
+                # oraddr is initially set to 1 << ANCILLA_COMPILER_TAG_BIT
+                #
+                #     oraddr |= state << ANCILLA_STATE_LSB
+                #
+                # to execute a different branch. But this is not yet worked into
+                # the emulator in a way that supports a sequence of ancilla
+                # measurement states.
+                oraddr = 1 << ANCILLA_COMPILER_TAG_BIT
+            else:
+                oraddr = 0
+            for gs_data in parse_gate_seq_data(data, oraddr=oraddr):
                 new_mod_type = (
                     int.from_bytes(gs_data, byteorder="little", signed=False)
                     >> MODTYPE_LSB

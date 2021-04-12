@@ -136,7 +136,7 @@ def iterate_GLUT_bounds(gid, channel):
         yield PLUT[channel][SLUT[channel][sid]]
 
 
-def parse_gate_seq_data(data):
+def parse_gate_seq_data(data, oraddr=0):
     """Get sequence of gates to run from input data"""
     prog_byte_cnt = (data >> GSEQ_BYTECNT_LSB) & 0b111111
     channel = (data >> DMA_MUX_LSB) & 0b111
@@ -146,8 +146,8 @@ def parse_gate_seq_data(data):
     for g in range(prog_byte_cnt):
         gid = newdata & ((1 << GLUTW) - 1)
         newdata >>= GLUTW
-        gidlist.append(gid)
-        for plut_data in iterate_GLUT_bounds(gid, channel):
+        gidlist.append(gid | oraddr)
+        for plut_data in iterate_GLUT_bounds(gid | oraddr, channel):
             plut_list.append(plut_data)
     print(f"gid list {channel}: {gidlist}")
     return plut_list
