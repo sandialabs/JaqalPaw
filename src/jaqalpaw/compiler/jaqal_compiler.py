@@ -292,7 +292,6 @@ class CircuitCompiler(CircuitConstructor):
                     addr_offset=addr_offset,
                 )
 
-
     def extract_gates(self):
         """Define gate identifiers (GLUT addresses) for LUT programming on each
         channel. The walk_slice call compresses gatesdown to unique data, tags
@@ -300,7 +299,7 @@ class CircuitCompiler(CircuitConstructor):
         it contains a sequence of hashes to be run. walk_slice also sets data
         in self.gate_hash_recurrence to check for frequency of calls to a
         particular gate."""
-        indd = defaultdict(int)
+        branch_index_counter = defaultdict(int)
         self.branches = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         self.unique_gates = defaultdict(dict)
         self.gate_hash_recurrence = defaultdict(lambda: defaultdict(int))
@@ -371,19 +370,19 @@ class CircuitCompiler(CircuitConstructor):
                         ):
                             if sub_gate_id == 0:
                                 initlen = sum(
-                                    len(self.branches[ch][bi][offset_addr])
-                                    for bi in range(indd[ch])
+                                    len(self.branches[ch][branch_idx][offset_addr])
+                                    for branch_idx in range(branch_index_counter[ch])
                                 )
                             if case_index == 0:
                                 branch_gate_sequence_ids.append(
                                     (sub_gate_id + initlen)
                                     | (1 << ANCILLA_COMPILER_TAG_BIT)
                                 )
-                            self.branches[ch][indd[ch]][offset_addr].append(
-                                inverted_ordered_gids[gate_hash]
-                            )
-                    self.gate_sequence_ids[chid].extend(sublist)
-                    indd[chid] += 1
+                            self.branches[ch][branch_index_counter[ch]][
+                                offset_addr
+                            ].append(inverted_ordered_gids[gate_hash])
+                    self.gate_sequence_ids[ch].extend(branch_gate_sequence_ids)
+                    branch_index_counter[ch] += 1
                 else:
                     self.gate_sequence_ids[ch].append(
                         inverted_ordered_gids[hash_or_branch[1]]
