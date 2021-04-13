@@ -48,14 +48,14 @@ def signed_n_bit_map(x, n=40):
 def convert_freq_full(frqw):
     """Converts to full 40 bit frequency word for
     packing into 256 bit spline data"""
-    convf = int(frqw / CLOCK_FREQUENCY * (2 ** 40 - 1))
+    convf = int(round(frqw / CLOCK_FREQUENCY * (1 << 40)))
     return convf
 
 
 def convert_phase_full(phsw):
     """Converts to full 40 bit frequency word for
     packing into 256 bit spline data"""
-    convf = int(phsw / 360.0 * (2 ** 40 - 1))
+    convf = int(round(phsw / 360.0 * (1 << 40)))
     return convf
 
 
@@ -68,11 +68,11 @@ def convert_phase_full_mod_2pi(phsw):
         phsw -= 360
     elif phsw < -180:
         phsw += 360
-    convf = int(phsw / 360.0 * (2 ** 40 - 1))
+    convf = int(round(phsw / 360.0 * (1 << 40)))
     return convf
 
 
 def convert_amp_full(ampw):
-    convf = int(ampw / MAXAMP * (2 ** 16 - 1))
+    convf = int(ampw / MAXAMP * ((1 << 16) - 1))
     fw1 = convf << 23
     return fw1

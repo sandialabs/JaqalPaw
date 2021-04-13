@@ -16,8 +16,8 @@ from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles, Branch, Case
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 from jaqalpaw.utilities.parameters import CLKFREQ
 from jaqalpaw.bytecode.encoding_parameters import (
-    ANCILLA_COMPILER_TAG_SHIFT,
-    ANCILLA_STATE_OFFSET,
+    ANCILLA_COMPILER_TAG_BIT,
+    ANCILLA_STATE_LSB,
 )
 
 flatten = lambda x: [y for l in x for y in l]
@@ -46,7 +46,7 @@ class CircuitCompiler(CircuitConstructor):
         self.code_literal = code_literal
         self.binary_data = defaultdict(list)
         self.unique_gates = defaultdict(dict)
-        self.unique_gate_identifiers = defaultdict(lambda: defaultdict(int))
+        self.gate_hash_recurrence = defaultdict(lambda: defaultdict(int))
         self.gate_sequence_hashes = defaultdict(list)
         self.gate_sequence_ids = defaultdict(list)
         self.ordered_gate_identifiers = dict()
@@ -144,110 +144,249 @@ class CircuitCompiler(CircuitConstructor):
         sorted_bytelist = timesort_bytelist(flatten(bytelist))
         return sorted_bytelist
 
-    def walk_slice_basic(self, pd):
-        for k, v in pd.channel_data.items():
-            new_key = hash(tuple(v))
-            self.unique_gates[k][new_key] = v
-            self.unique_gate_identifiers[k][new_key] += 1
-            self.gate_sequence_hashes[k].append(new_key)
+    def walk_slice(self, slice_obj, gate_hashes, reps=1, addr_offset=0):
+        """Recursively walk through a list of slice objects, including Loops,
+        Branches, Cases, down to the lowest GateSlice objects in order to map
+        out the PulseData hashes that serve as gate sequence ids. The slice_obj
+        input parameter is originally a list, which in the simplest case will
+        contain GateSlice objects. Each GateSlice object has been pre-calculated
+        to achieve equivalent time boundaries across all channels. The GateSlice
+        encodes a unified, composite gate object for which a particular set of
+        gates is run on all channels for the same time. Each GateSlice is
+        represented as a dict of lists, where the key is the channel, and the
+        list contains PulseData objects that comprise the gate to be run on said
+        channel
 
-    def walk_slice(self, pd, hl, reps=1, addr_offset=0):
-        """Recursively walk through a slice list, including Loop objects
-        to map out the PulseData hashes that serve as gate sequence ids"""
-        hash_list = hl
-        if isinstance(pd, GateSlice):
-            for k, v in pd.channel_data.items():
-                new_key = (addr_offset, hash(tuple(v)))
-                self.unique_gates[k][new_key[1]] = v
-                self.unique_gate_identifiers[k][new_key[1]] += reps
-                hash_list[k].append(new_key)
-        elif isinstance(pd, Loop):
-            hash_list_inner = defaultdict(list)
-            for p in pd:
+                GateSlice_0    ,     GateSlice_1     ,     Gateslice_2
+           |ch:0, [pd 0, ...]|   |ch:0, [pd 1, ...]|   |ch:0, [pd 2, ...]|
+           |ch:1, [pd 0, ...]|   |ch:1, [pd 1, ...]|   |ch:1, [pd 2, ...]|
+           |ch:2, [pd 0, ...]|   |ch:2, [pd 1, ...]|   |ch:2, [pd 2, ...]|
+
+        The "gates" in this sense are abstract because they may contain data
+        that simply pads out a time to make sure everything lines up later in
+        the circuit, but it still needs an identifier in the LUTs. So the list
+        of GateSlices is effectively transposed, where walk_slice traverses the
+        list of pulse data objects and assigns them a unique gate name (based on
+        a hash) independently for each channel:
+
+         ch:0 -> [[pd 0,...],[pd 1,...],[pd 2,...]] --> [gate_0,gate_1,gate_2]
+         ch:1 -> [[pd 0,...],[pd 1,...],[pd 2,...]] --> [gate_0,gate_0,gate_1]
+         ch:2 -> [[pd 0,...],[pd 1,...],[pd 2,...]] --> [gate_1,gate_0,gate_0]
+
+        Data redundancies may lead to duplicate gates. walk_slice assigns an
+        arbitrary identifier to a list of PulseData objects ([pd 0,...]) based
+        on the hash of a tuple of that list. If the hash is repeated, then the
+        existing gate identifier is appended to the sequence of gate hashes that
+        will be used for encoding the gate sequence to be read out of the LUTs.
+
+        Because other structures are used for specific purposes in conjunction
+        with GateSlice objects, they are treated in different ways depending on
+        the object type. For example, a Loop object only needs to be traversed
+        once to calculate gate hashes, and the sequence of hashes will then be
+        repeated. Branches will contain different Case objects, which contain
+        additional address offset information used for programming the GLUT.
+
+        Since these objects can be nested, but all contain GateSlice objects at
+        the lowest level, walk_slice does a recursive descent to collect all
+        unique gate information, the associated gate hash, and the linear
+        sequence of gates to be sequenced in terms of their hashes. The hash
+        sequence will mutate the gate_hashes input object, which is treated
+        differently for each object type but is always a defaultdict(list).
+
+        The other input arguments control the state of the current walk_slice
+        call during recursion. reps sets the full number of repetitions for
+        each gate, which accounts for nested loops, in order to track frequency.
+        addr_offset is used to change the address MSBs for a particular Case
+        condition in a Branch statement. Branch statements break the linearity
+        of a circuit, and must account for multiple sequences that depend on an
+        external hardware input. walk_slice will return a Branch class to
+        represent the various hash sequences and their associated address
+        offsets for later use by extract_gates in order to appropriately map the
+        different branch cases to different memory regions. However, the gate
+        uniqueness, minimal gate information, and the order in which they're
+        sequenced is captured by walk_slice.
+        """
+        if isinstance(slice_obj, GateSlice):
+            for ch, gate_pd_list in slice_obj.channel_data.items():
+                # We've arrived at a GateSlice (which is type defaultdict(list))
+                # Each key is a channel, and each list contains the binarized
+                # pulse data associated with the "gate" to be run on each
+                # channel for this slice. Hashes of each gate are calculated
+                # and used to give the gates a unique fingerprint, then the
+                # gate data is stored in self.unique_gates, the number of calls
+                # to the gate is tracked in self.gate_hash_recurrence and
+                # the sequence of gates is tracked as a list of gate hashes
+                # which are later sorted and given specific addresses in the
+                # gate sequencer LUTs.
+                new_key = hash(tuple(gate_pd_list))
+                # Taking the hash of a tuple adds a factor of 2 speedup for the
+                # whole compilation. However, this leads to a small (~1/3e11)
+                # chance of a hash collision. The setdefault method in
+                # conjunction with the assertion gives comparable performance
+                # but with hash collision detection. If a hash collision occurs,
+                # the hash() call in new_key can be removed.
+                gate_pd_ref = self.unique_gates[ch].setdefault(new_key, gate_pd_list)
+                assert gate_pd_ref == gate_pd_list
+                self.gate_hash_recurrence[ch][new_key] += reps
+                # gate_hashes stores a list of sequential hashes that need to be
+                # run for a gate sequence. However, because walk_slice might be
+                # recursing from within a Branch/Case, the address offset is
+                # tracked separately so the mapping of keys for a branch can be
+                # handled correctly
+                gate_hashes[ch].append((addr_offset, new_key))
+        elif isinstance(slice_obj, Loop):
+            # Loops contain data that is highly redundant, and only needs to be
+            # walked once to acquire unique gate information.
+            inner_gate_hashes = defaultdict(list)
+            for loop_block in slice_obj:
                 self.walk_slice(
-                    p,
-                    hl=hash_list_inner,
-                    reps=pd.repeats * reps,
+                    loop_block,
+                    gate_hashes=inner_gate_hashes,
+                    reps=slice_obj.repeats * reps,
                     addr_offset=addr_offset,
                 )
-            for (
-                k,
-                v,
-            ) in (
-                hash_list_inner.items()
-            ):  # only repeat the gate ids after walking a Loop
-                hash_list[k].extend(v * pd.repeats)
-        elif isinstance(pd, Branch):
-            hash_list_inner = defaultdict(list)
-            for p in pd:
-                self.walk_slice(p, hl=hash_list_inner, addr_offset=addr_offset)
-            for (
-                k,
-                v,
-            ) in hash_list_inner.items():
-                hash_list[k].append(Branch(v))
-        elif isinstance(pd, Case):
-            hash_list_inner = defaultdict(list)
-            for p in pd:
+            for k, v in inner_gate_hashes.items():
+                # only repeat the gate ids after walking a Loop
+                gate_hashes[k].extend(v * slice_obj.repeats)
+        elif isinstance(slice_obj, Branch):
+            # Branches require a different return type to indicate
+            # that extra programming steps must be performed.
+            inner_gate_hashes = defaultdict(list)
+            for case in slice_obj:
                 self.walk_slice(
-                    p, hl=hash_list_inner, addr_offset=pd.state << ANCILLA_STATE_OFFSET
+                    case,
+                    gate_hashes=inner_gate_hashes,
+                    reps=reps,
+                    addr_offset=addr_offset,
+                )
+            for k, v in inner_gate_hashes.items():
+                gate_hashes[k].append(Branch(v))
+        elif isinstance(slice_obj, Case):
+            # Cases are blocks within a branch statement that have an explicit
+            # state tied to the particular sequence. For example, in the event
+            # of an ancilla readout of '01', the gates in the block need to be
+            # stored at a different offset address corresponding to the '01'
+            # measurement. Thus the gates in a case block need to all have the
+            # correct address offset, which is given by the particular state
+            # of the readout, and must affect all gates within the block. The
+            # address is modified by bit shifting the programming address by
+            # ANCILLA_STATE_LSB, which might need to change if the number of
+            # ancilla qubits changes.
+            inner_gate_hashes = defaultdict(list)
+            for case_block in slice_obj:
+                self.walk_slice(
+                    case_block,
+                    gate_hashes=inner_gate_hashes,
+                    reps=reps,
+                    addr_offset=slice_obj.state << ANCILLA_STATE_LSB,
+                )
+            for k, v in inner_gate_hashes.items():
+                gate_hashes[k].append(v)
+        else:
+            # This is just a list, and we just need another layer of recursion.
+            for nested_slice_obj in slice_obj:
+                self.walk_slice(
+                    nested_slice_obj,
+                    gate_hashes=gate_hashes,
+                    reps=reps,
+                    addr_offset=addr_offset,
                 )
 
-            for (
-                k,
-                v,
-            ) in hash_list_inner.items():
-                hash_list[k].append(v)
-        else:
-            for p in pd:
-                self.walk_slice(p, hl=hash_list, reps=reps, addr_offset=addr_offset)
-
     def extract_gates(self):
-        """Define Gates for LUT packing based on each channel
-        in each GateSlice appearing in self.slice_list"""
-        indd = defaultdict(int)
+        """Define gate identifiers (GLUT addresses) for LUT programming on each
+        channel. The walk_slice call compresses gatesdown to unique data, tags
+        them with a hash, and mutates the self.gate_sequence_hashes variable so
+        it contains a sequence of hashes to be run. walk_slice also sets data
+        in self.gate_hash_recurrence to check for frequency of calls to a
+        particular gate."""
+        branch_index_counter = defaultdict(int)
         self.branches = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
         self.unique_gates = defaultdict(dict)
-        self.unique_gate_identifiers = defaultdict(lambda: defaultdict(int))
+        self.gate_hash_recurrence = defaultdict(lambda: defaultdict(int))
         self.gate_sequence_hashes = defaultdict(list)
         self.gate_sequence_ids = defaultdict(list)
-        self.walk_slice(self.slice_list, hl=self.gate_sequence_hashes)
+        self.walk_slice(self.slice_list, gate_hashes=self.gate_sequence_hashes)
         self.ordered_gate_identifiers = dict()
-        for chid in range(self.CHANNEL_NUM):
-            self.ordered_gate_identifiers[chid] = dict()
-            for i, (k, _) in enumerate(
+        for ch in range(self.CHANNEL_NUM):
+            self.ordered_gate_identifiers[ch] = dict()
+            # Generate contiguous addresses for gate ids (or GLUT addresses) for
+            # sequencing gates. They are ordered by recurrence, so gates that
+            # are called most often are given the lowest addresses. This is done
+            # for each channel, and stored in self.ordered_gate_identifiers to
+            # tie the numeric ID to a gate hash.
+            for numeric_gate_id, (gate_hash, ncalls) in enumerate(
                 sorted(
-                    self.unique_gate_identifiers[chid].items(),
+                    self.gate_hash_recurrence[ch].items(),
                     key=lambda x: x[1],
                     reverse=True,
                 )
             ):
-                self.ordered_gate_identifiers[chid][i] = k
+                self.ordered_gate_identifiers[ch][numeric_gate_id] = gate_hash
+            # Create a temporary inverted dict that maps hash -> gate id
             inverted_ordered_gids = {
-                v: k for k, v in self.ordered_gate_identifiers[chid].items()
+                v: k for k, v in self.ordered_gate_identifiers[ch].items()
             }
-            self.gate_sequence_ids[chid] = []
-            for el in self.gate_sequence_hashes[chid]:
-                if isinstance(el, Branch):
-                    sublist = []
-                    for lnum, ll in enumerate(el):
-                        for n, subel in enumerate(ll):
-                            if n == 0:
+            # Create a numeric gate sequence, which will be the form used for
+            # generating the gate sequence bytecode. Branches need special
+            # consideration now, and a secondary mapping needs to be made for
+            # different cases. For a branch, the streamed sequence must be
+            # identical for all cases. The easiest solution is to stream in a
+            # linear sequence of gate ids (0,1,2,...). These will naturally be
+            # differentiated from standard streaming words because the upper
+            # address bits will modify the gate in the LUT. This is a problem
+            # when handling Cases in which the readout is all zero, because
+            # there is nothing to distinguish between a standard gate sequence
+            # and an ancilla-based sequence. Thus the address is tagged with
+            # ANCILLA_COMPILER_TAG_BIT, which will typically correspond to the
+            # MSB of the GLUT address used for programming. This bit can be set
+            # to default to 1 for the hardware via the Octet interface and will
+            # differentiate between an ancilla readout sequence and a standard
+            # gate sequence. For multiple branch statements, there will likely
+            # be collisions with the previous branches in the upper part of the
+            # GLUT address. So the gate ids must maintain a linear sequence that
+            # is a continuation of the previous sequences. In other words for
+            # 3 branches, each with 3 gates, the gate ids streamed for those
+            # branches will be
+            #
+            #                   (0,1,2), (3,4,5), (6,7,8)
+            #
+            # If a branch has redundancies that match all possible cases, then
+            # a linear sequence won't be necessary. In other words, the first
+            # sequence could have a form of (0,1,0), in which case the second
+            # sequence above could start from a lower index -> (2,3,4) or a
+            # sequence could be reused all together. However, this optimization
+            # has not yet been worked in.
+            self.gate_sequence_ids[ch] = []
+            for hash_or_branch in self.gate_sequence_hashes[ch]:
+                # The list of sequential hashes has a special exception where
+                # the return type is a branch, because a branch contains a
+                # collection of hashes that need to be equivalent across all
+                # possible ancilla states.
+                if isinstance(hash_or_branch, Branch):
+                    branch_gate_sequence_ids = []
+                    for case_index, case_gate_hashes in enumerate(hash_or_branch):
+                        for sub_gate_id, (offset_addr, gate_hash) in enumerate(
+                            case_gate_hashes
+                        ):
+                            if sub_gate_id == 0:
                                 initlen = sum(
-                                    len(self.branches[chid][bi][subel[0]])
-                                    for bi in range(indd[chid])
+                                    len(self.branches[ch][branch_idx][offset_addr])
+                                    for branch_idx in range(branch_index_counter[ch])
                                 )
-                            if lnum == 0:
-                                sublist.append(
-                                    (n + initlen) | (1 << ANCILLA_COMPILER_TAG_SHIFT)
+                            if case_index == 0:
+                                branch_gate_sequence_ids.append(
+                                    (sub_gate_id + initlen)
+                                    | (1 << ANCILLA_COMPILER_TAG_BIT)
                                 )
-                            self.branches[chid][indd[chid]][subel[0]].append(
-                                inverted_ordered_gids[subel[1]]
-                            )
-                    self.gate_sequence_ids[chid].extend(sublist)
-                    indd[chid] += 1
+                            self.branches[ch][branch_index_counter[ch]][
+                                offset_addr
+                            ].append(inverted_ordered_gids[gate_hash])
+                    self.gate_sequence_ids[ch].extend(branch_gate_sequence_ids)
+                    branch_index_counter[ch] += 1
                 else:
-                    self.gate_sequence_ids[chid].append(inverted_ordered_gids[el[1]])
+                    self.gate_sequence_ids[ch].append(
+                        inverted_ordered_gids[hash_or_branch[1]]
+                    )
 
     def generate_lookup_tables(self):
         """Construct the LUT data in an intermediate representation. The outputs
@@ -279,8 +418,7 @@ class CircuitCompiler(CircuitConstructor):
                     gind = 0
                     for subgid in glist:
                         self.GLUT_data[ch][
-                            (startind + state + gind)
-                            | (1 << ANCILLA_COMPILER_TAG_SHIFT)
+                            (startind + state + gind) | (1 << ANCILLA_COMPILER_TAG_BIT)
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
@@ -348,7 +486,7 @@ class CircuitCompiler(CircuitConstructor):
         if not self.compiled:
             self.compile()
         if channel_mask is None:
-            channel_mask = 2 ** self.CHANNEL_NUM - 1
+            channel_mask = (1 << self.CHANNEL_NUM) - 1
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
         self.sequence_data = list()
@@ -440,7 +578,7 @@ class CircuitCompiler(CircuitConstructor):
         if not self.compiled:
             self.compile()
         if channel_mask is None:
-            channel_mask = 2 ** self.CHANNEL_NUM - 1
+            channel_mask = (1 << self.CHANNEL_NUM) - 1
         self.final_byte_dict = defaultdict(list)
         programming_data = list()
         sequence_data = list()
