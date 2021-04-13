@@ -4,6 +4,8 @@ import asyncio
 from jaqalpaw.bytecode.encoding_parameters import (
     CLR_FRAME_LSB,
     APPLY_EOF_LSB,
+    ANCILLA_COMPILER_TAG_BIT,
+    ANCILLA_STATE_LSB,
 )
 from .byte_decoding import *
 
@@ -31,7 +33,7 @@ async def DMA_arbiter(name, queue, data_output_queues):
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
-        channel = (data >> (DMA_MUX_OFFSET)) & 0b111
+        channel = (data >> DMA_MUX_LSB) & 0b111
         await data_output_queues[channel].put(raw_data)
         queue.task_done()
 
@@ -44,8 +46,8 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
-        mod_type = (data >> (MODTYPE_LSB)) & 0b111
-        prog_mode = (data >> (PROG_MODE_OFFSET)) & 0b111
+        mod_type = (data >> MODTYPE_LSB) & 0b111
+        prog_mode = (data >> PROG_MODE_LSB) & 0b111
         if prog_mode == 0b111:
             await data_output_queues[mod_type].put(raw_data)
         elif prog_mode == 0b001:
@@ -55,10 +57,25 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
         elif prog_mode == 0b011:
             parse_PLUT_prog_data(raw_data)
         elif prog_mode == 0b100 or prog_mode == 0b101 or prog_mode == 0b110:
-            for gs_data in parse_gate_seq_data(data):
+            if prog_mode == 0b101 or prog_mode == 0b110:
+                # at the very least we'll need the streamed data to be augmented
+                # by the tag bit. Additional cases can be applied by ORing the
+                # "OR address", oraddr, (representing external hardware input)
+                # via some (binary) state by adding the following line after
+                # oraddr is initially set to 1 << ANCILLA_COMPILER_TAG_BIT
+                #
+                #     oraddr |= state << ANCILLA_STATE_LSB
+                #
+                # to execute a different branch. But this is not yet worked into
+                # the emulator in a way that supports a sequence of ancilla
+                # measurement states.
+                oraddr = 1 << ANCILLA_COMPILER_TAG_BIT
+            else:
+                oraddr = 0
+            for gs_data in parse_gate_seq_data(data, oraddr=oraddr):
                 new_mod_type = (
                     int.from_bytes(gs_data, byteorder="little", signed=False)
-                    >> (MODTYPE_LSB)
+                    >> MODTYPE_LSB
                 ) & 0b111
                 await data_output_queues[new_mod_type].put(gs_data)
         queue.task_done()
@@ -83,7 +100,7 @@ async def spline_engine(
         enablemask = (data >> OUTPUT_EN_LSB) & 0b1
         mod_type = (data >> MODTYPE_LSB) & 0b111
         shift = (data >> SPLSHIFT_LSB) & 0b11111
-        channel = (data >> DMA_MUX_OFFSET) & 0b111
+        channel = (data >> DMA_MUX_LSB) & 0b111
         reset_accum = (data >> CLR_FRAME_LSB) & 0b1
         apply_at_eof = (data >> APPLY_EOF_LSB) & 0b1
         dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
@@ -128,9 +145,9 @@ async def spline_engine(
             U2_shift = U2
             U3_shift = U3
             # Calculate the same for real values for monitoring purposes only
-            U1_rshift = U1_real / (2 ** shift)
-            U2_rshift = U2_real / (2 ** (shift * 2))
-            U3_rshift = U3_real / (2 ** (shift * 3))
+            U1_rshift = U1_real / (1 << shift)
+            U2_rshift = U2_real / (1 << (shift * 2))
+            U3_rshift = U3_real / (1 << (shift * 3))
             # Pack the coefficients in a format that can be handled by the spline engine emulator
             coeffs = np.zeros((4, 1))
             coeffs[0, 0] = U3_shift

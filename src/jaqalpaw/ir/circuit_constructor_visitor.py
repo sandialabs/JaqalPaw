@@ -165,9 +165,9 @@ class CircuitConstructorVisitor(Visitor):
         slice_list = self.visit(loop.statements)
         return Loop(slice_list, repeats=loop.iterations)
 
-    def visit_BranchStatement(self, block):
+    def visit_BranchStatement(self, branch):
         """Return a list of GateSlice's or Loop's from this block."""
-        slice_list = [self.visit(stmt) for stmt in block.statements]
+        slice_list = [self.visit(stmt) for stmt in branch.cases]
         return Branch(slice_list)
 
     def visit_CaseStatement(self, block):
