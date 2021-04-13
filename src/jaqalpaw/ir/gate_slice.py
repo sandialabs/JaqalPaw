@@ -34,9 +34,38 @@ class GateSlice:
                         elif other.channel_data[k] is None:
                             continue
                         else:
-                            raise CollisionException(
-                                f"Data does not match on channel {k}!"
-                            )
+                            # There might be a collision on a channel in which
+                            # everything is the same except for the duration.
+                            # This will primarily show up when the global beam
+                            # is used for two operations in parallel, but the
+                            # excess time on the global beam is irrelevant for
+                            # the shorter of the two individual pulses as long
+                            # as the data on the global beam is the same and all
+                            # of the parameters are constant. In principle this
+                            # could be extended to handle equivalent spline
+                            # coefficients for which there is an iterable in one
+                            # of the parameters that is matched over the shorter
+                            # duration, but this is more difficult and will be
+                            # less likely to occur so it is currently ignored.
+                            # Also, the current case is limited to lists of
+                            # length == 1 since the intended overlap of other
+                            # data might break down for multiple PulseData objs.
+                            if (
+                                len(self.channel_data[k]) == len(other.channel_data[k])
+                                and len(self.channel_data[k]) == 1
+                                and self.channel_data[k][0].almost_equal(
+                                    other.channel_data[k][0]
+                                )
+                            ):
+                                if (
+                                    self.channel_data[k][0].dur
+                                    < other.channel_data[k][0].dur
+                                ):
+                                    self.channel_data[k] = other.channel_data[k]
+                            else:
+                                raise CollisionException(
+                                    f"Data does not match on channel {k}!"
+                                )
             else:
                 self.channel_data[k] = other.channel_data[k]
 

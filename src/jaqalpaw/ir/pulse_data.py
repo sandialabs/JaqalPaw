@@ -109,6 +109,70 @@ class PulseData:
             )
         )
 
+    def almost_equal(self, other):
+        """almost_equal is used for verifying that the data is equivalent with
+        the exception of duration. The intended use case here is for checking
+        equivalency of counter-propagating pulses with different durations. The
+        global beam will be used in both pulses, but only has physical effect
+        when the corresponding individual beam is also on. So a mismatch in
+        global beam durations is acceptable as long as all other parameters are
+        the same. This becomes more difficult to test if discrete/spline
+        modulation is used. In principle the data could overlap if the spline
+        or discrete modulations are defined just right, but at this point it is
+        more likely that the user is explicitly trying to make this work and
+        would probably construct their gates in a way to strictly enforce one
+        particular global function on the tone in question. This test is not
+        limited to a particular channel, in case the global is mapped to a
+        different output, or other possible use cases arise."""
+        if not isinstance(other, PulseData):
+            return False
+        all_eq_but_duration = all(
+            map(
+                lambda attr: getattr(self, attr) == getattr(other, attr),
+                [
+                    "channel",
+                    "freq0",
+                    "phase0",
+                    "amp0",
+                    "freq1",
+                    "phase1",
+                    "amp1",
+                    "waittrig",
+                    "sync_mask",
+                    "enable_mask",
+                    "fb_enable_mask",
+                    "framerot0",
+                    "framerot1",
+                    "apply_at_eof_mask",
+                    "rst_frame_mask",
+                    "fwd_frame0_mask",
+                    "fwd_frame1_mask",
+                    "inv_frame0_mask",
+                    "inv_frame1_mask",
+                    "delay",
+                ],
+            )
+        )
+        if all_eq_but_duration:
+            all_params_static = all(
+                map(
+                    lambda attr: not isinstance(getattr(self, attr), (list, tuple)),
+                    [
+                        "freq0",
+                        "phase0",
+                        "amp0",
+                        "freq1",
+                        "phase1",
+                        "amp1",
+                        "framerot0",
+                        "framerot1",
+                    ],
+                )
+            )
+            if all_params_static:
+                return True
+        return False
+
     def __hash__(self):
         return hash(
             (
