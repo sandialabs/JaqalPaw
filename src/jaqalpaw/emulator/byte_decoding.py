@@ -29,15 +29,15 @@ mdr = tree()
 
 
 def convert_phase_bytes_to_real(data):
-    return data / ((1 << 40) - 1) * 360.0
+    return data / (1 << 40) * 360.0
 
 
 def convert_freq_bytes_to_real(data):
-    return data / ((1 << 40) - 1) * CLOCK_FREQUENCY
+    return data / (1 << 40) * CLOCK_FREQUENCY
 
 
 def convert_amp_bytes_to_real(data):
-    return (int(data) >> 23) / ((1 << 16 - 1) - 1) * MAXAMP
+    return (int(data) >> 23) / ((1 << 16) - 1) * MAXAMP
 
 
 def convert_time_from_clock_cycles(data):
