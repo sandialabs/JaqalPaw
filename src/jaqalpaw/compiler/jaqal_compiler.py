@@ -37,6 +37,7 @@ class CircuitCompiler(CircuitConstructor):
         file=None,
         num_channels=8,
         override_dict=None,
+        pd_override_dict=None,
         pulse_definition=None,
         global_delay=None,
         code_literal=None,
@@ -61,6 +62,7 @@ class CircuitCompiler(CircuitConstructor):
         self.GLUT_bin = defaultdict(list)
         self.GSEQ_bin = defaultdict(list)
         self.override_dict = override_dict
+        self.pd_override_dict = pd_override_dict
         self.compiled = False
         self.delay_settings = None
         self.set_global_delay(global_delay)
@@ -106,7 +108,11 @@ class CircuitCompiler(CircuitConstructor):
         """Generate binary representation of all PulseData objects.
         Used primarily"""
         if not self.compiled:
-            self.construct_circuit(self.file, override_dict=self.override_dict)
+            self.construct_circuit(
+                self.file,
+                override_dict=self.override_dict,
+                pd_override_dict=self.pd_override_dict,
+            )
         self.binary_data = defaultdict(list)
         circ_main = GateSlice(num_channels=self.channel_num)
         self.recursive_append_and_expand(self.slice_list, circ_main)

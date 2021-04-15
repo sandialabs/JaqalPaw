@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from jaqalpaq.parser import parse_jaqal_string
+from jaqalpaq.parser.parser import parse_jaqal_string_header, parse_jaqal_file_header
 from jaqalpaq.core.algorithm import expand_macros, fill_in_let
 import runpy
 
@@ -32,8 +33,15 @@ class CircuitConstructor:
         self.circuit = None
 
     def get_dependencies(self):
-        ast = self.generate_ast()
-        return get_let_constants(ast), self.gate_pulse_info
+        if self.file is None:
+            circuit, extra = parse_jaqal_string_header(
+                self.code_literal, return_usepulses=True
+            )
+        else:
+            circuit, extra = parse_jaqal_file_header(self.file, return_usepulses=True)
+        usepulses = extra["usepulses"]
+        self.gate_pulse_info = list(usepulses.keys())[0]
+        return get_let_constants(circuit), self.gate_pulse_info
 
     def import_gate_pulses(self):
         if self.gate_pulse_info is None:
@@ -41,7 +49,6 @@ class CircuitConstructor:
         if self.gate_pulse_info is None:
             raise CircuitCompilerException("No gate pulse file specified!")
         gp_path = Path(self.file).parent
-        jaqal_lets, self.gate_pulse_info = self.get_dependencies()
         gp_name = self.gate_pulse_info[
             -1
         ]  # jaqal token returns a list of imports (split at '.'), last one is class name
@@ -54,7 +61,7 @@ class CircuitConstructor:
             raise CircuitCompilerException(f"Can't find path {str(gp_path)}")
         pd_import = runpy.run_path(gp_path, init_globals={"PulseData": PulseData})
         self.pulse_definition = pd_import[gp_name]()
-        return self.pulse_definition
+        return pd_import[gp_name]
 
     def generate_ast(self, file=None, override_dict=None):
         if self.base_circuit is None:
@@ -70,16 +77,19 @@ class CircuitConstructor:
             self.gate_pulse_info = list(usepulses.keys())[0]
 
         if override_dict is not None:
-            self.circuit = fill_in_let(self.circuit, override_dict)
+            self.circuit = fill_in_let(self.base_circuit, override_dict)
         else:
             self.circuit = self.base_circuit
 
         return self.circuit
 
-    def construct_circuit(self, file, override_dict=None):
+    def construct_circuit(self, file, override_dict=None, pd_override_dict=None):
         """Generate full circuit from jaqal file. Circuit is in the form of
         PulseData objects."""
         ast = self.generate_ast(file, override_dict=override_dict)
+        if pd_override_dict and isinstance(pd_override_dict, dict):
+            for k, v in pd_override_dict.items():
+                setattr(self.pulse_definition, k, v)
         self.slice_list = convert_circuit_to_gateslices(
             self.pulse_definition, ast, self.channel_num
         )
