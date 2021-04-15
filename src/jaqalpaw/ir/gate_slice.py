@@ -4,7 +4,7 @@ from copy import copy
 from .pulse_data import PulseData
 from .padding import append_prepend_distribute
 from jaqalpaw.utilities.datatypes import ClockCycles, to_real_time
-from jaqalpaw.utilities.exceptions import CollisionException
+from jaqalpaw.utilities.exceptions import CollisionException, CircuitCompilerException
 from jaqalpaw.utilities.parameters import CLKFREQ
 
 
@@ -61,6 +61,11 @@ class GateSlice:
                                     self.channel_data[k][0].dur
                                     < other.channel_data[k][0].dur
                                 ):
+                                    self.channel_data[k] = other.channel_data[k]
+                            elif (self.total_duration() == other.total_duration()
+                                  and (all(map(lambda x: x.is_nop(), self.channel_data[k]))
+                                  or all(map(lambda x: x.is_nop(), other.channel_data[k])))):
+                                if all(map(lambda x: x.is_nop(), self.channel_data[k])):
                                     self.channel_data[k] = other.channel_data[k]
                             else:
                                 raise CollisionException(
@@ -160,3 +165,15 @@ class GateSlice:
                 print(
                     f"Channel {k}; Total Duration: {total_dur}; Durations: {dur_list}"
                 )
+
+    def total_duration(self, ch=None):
+        if ch is None:
+            if self.all_durations_equal():
+                return sum(map(lambda x: x.dur, self.channel_data[0]))
+            else:
+                raise CircuitCompilerException("Not all durations equal in GateSlice!")
+        return sum(map(lambda x: x.dur, self.channel_data[ch]))
+
+    def all_durations_equal(self):
+        return all(map(self.total_duration, self.channel_data.keys()))
+

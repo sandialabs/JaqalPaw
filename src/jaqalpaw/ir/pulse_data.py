@@ -199,6 +199,9 @@ class PulseData:
             )
         )
 
+    def is_nop(self):
+        return self == PulseData(self.channel, self.dur)
+
     @lru_cache(maxsize=4096)
     def binarize(self, bypass=False):
         self.binary_data = pulse(
