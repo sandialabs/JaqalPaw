@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from jaqalpaq.parser import parse_jaqal_string
+from jaqalpaq.parser import parse_jaqal_string, parse_jaqal_file
 from jaqalpaq.parser.parser import parse_jaqal_string_header, parse_jaqal_file_header
 from jaqalpaq.core.algorithm import expand_macros, fill_in_let
 import runpy
@@ -35,19 +35,24 @@ class CircuitConstructor:
     def get_dependencies(self):
         if self.file is None:
             circuit, extra = parse_jaqal_string_header(
-                self.code_literal, return_usepulses=True
+                self.code_literal, return_usepulses=False
             )
+            self.gate_pulse_info = None
         else:
             circuit, extra = parse_jaqal_file_header(self.file, return_usepulses=True)
-        usepulses = extra["usepulses"]
-        self.gate_pulse_info = list(usepulses.keys())[0]
+            usepulses = extra["usepulses"]
+            self.gate_pulse_info = list(usepulses.keys())[0]
         return get_let_constants(circuit), self.gate_pulse_info
 
     def import_gate_pulses(self):
+        if self.file is None and self.pulse_definition:
+            return self.pulse_definition
         if self.gate_pulse_info is None:
             self.get_dependencies()
         if self.gate_pulse_info is None:
             raise CircuitCompilerException("No gate pulse file specified!")
+        if self.file is None and self.pulse_definition:
+            return self.pulse_definition
         gp_path = Path(self.file).parent
         gp_name = self.gate_pulse_info[
             -1
@@ -66,15 +71,13 @@ class CircuitConstructor:
     def generate_ast(self, file=None, override_dict=None):
         if self.base_circuit is None:
             if self.file is None:
-                text = self.code_literal
+                circuit = parse_jaqal_string(self.code_literal, autoload_pulses=False, return_usepulses=False)
+                self.gate_pulse_info = None
             else:
-                text = Path(self.file).read_text()
-            circuit, extra = parse_jaqal_string(
-                text, autoload_pulses=False, return_usepulses=True
-            )
-            usepulses = extra["usepulses"]
+                circuit, extra = parse_jaqal_file(self.file, autoload_pulses=False, return_usepulses=True)
+                usepulses = extra["usepulses"]
+                self.gate_pulse_info = list(usepulses.keys())[0]
             self.base_circuit = expand_macros(circuit)
-            self.gate_pulse_info = list(usepulses.keys())[0]
 
         if override_dict is not None:
             self.circuit = fill_in_let(self.base_circuit, override_dict)
