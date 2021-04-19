@@ -71,10 +71,14 @@ class CircuitConstructor:
     def generate_ast(self, file=None, override_dict=None):
         if self.base_circuit is None:
             if self.file is None:
-                circuit = parse_jaqal_string(self.code_literal, autoload_pulses=False, return_usepulses=False)
+                circuit = parse_jaqal_string(
+                    self.code_literal, autoload_pulses=False, return_usepulses=False
+                )
                 self.gate_pulse_info = None
             else:
-                circuit, extra = parse_jaqal_file(self.file, autoload_pulses=False, return_usepulses=True)
+                circuit, extra = parse_jaqal_file(
+                    self.file, autoload_pulses=False, return_usepulses=True
+                )
                 usepulses = extra["usepulses"]
                 self.gate_pulse_info = list(usepulses.keys())[0]
             self.base_circuit = expand_macros(circuit)
