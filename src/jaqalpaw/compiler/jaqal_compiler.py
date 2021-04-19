@@ -104,7 +104,7 @@ class CircuitCompiler(CircuitConstructor):
             else:
                 appendto.append(s)
 
-    def binarize_circuit(self, lru_cache=True, bypass=False):
+    def binarize_circuit(self, bypass=False):
         """Generate binary representation of all PulseData objects.
         Used primarily"""
         if not self.compiled:
@@ -119,9 +119,7 @@ class CircuitCompiler(CircuitConstructor):
         self.apply_delays(self.delay_settings, circ_main=circ_main)
         for ch, pd_list in circ_main.channel_data.items():
             for pd in pd_list:
-                self.binary_data[ch].append(
-                    pd.binarize(lru_cache=lru_cache, bypass=bypass)
-                )
+                self.binary_data[ch].append(pd.binarize(bypass=bypass))
         return self.binary_data
 
     def apply_delays(self, delay_settings=None, circ_main=None):
@@ -141,7 +139,7 @@ class CircuitCompiler(CircuitConstructor):
 
     def streaming_data(self, channels=None):
         """Generate the binary data for direct streaming (bypass mode)"""
-        self.binarize_circuit(lru_cache=True, bypass=True)
+        self.binarize_circuit(bypass=True)
         if channels is None:
             channels = list(range(self.channel_num))
         bytelist = []
@@ -468,7 +466,7 @@ class CircuitCompiler(CircuitConstructor):
             for chnm in range(bbind, min(bbind + 8, self.channel_num)):
                 if channel_mask is None or (1 << chnm) & channel_mask:
                     for pd in self.last_packet_pulse_data(chnm):
-                        packet_data.extend(pd.binarize(bypass=True, lru_cache=False))
+                        packet_data.extend(pd.binarize(bypass=True))
         prog_data.append([])
         timesorted_packets = timesort_bytelist(packet_data)
         seq_data.append(timesorted_packets)

@@ -1,11 +1,10 @@
 from collections import defaultdict
+from functools import lru_cache
 
 from jaqalpaw.bytecode.pulse_binarization import pulse
 from jaqalpaw.utilities.helper_functions import make_list_hashable
 from jaqalpaw.utilities.datatypes import to_clock_cycles
 from jaqalpaw.utilities.parameters import CLKFREQ
-
-pd_cache = dict()
 
 
 class PulseData:
@@ -200,9 +199,8 @@ class PulseData:
             )
         )
 
-    def binarize(self, bypass=False, lru_cache=True):
-        if lru_cache and self in pd_cache.keys():
-            return pd_cache[self]
+    @lru_cache(maxsize=4096)
+    def binarize(self, bypass=False):
         self.binary_data = pulse(
             self.channel,
             self.dur + self.delay,
@@ -226,7 +224,6 @@ class PulseData:
             inv_frame1_mask=self.inv_frame1_mask,
             bypass=bypass,
         )
-        pd_cache[self] = self.binary_data
         return self.binary_data
 
     @property
