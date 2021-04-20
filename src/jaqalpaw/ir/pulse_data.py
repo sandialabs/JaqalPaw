@@ -37,7 +37,7 @@ class PulseData:
         framerot1=None,
         apply_at_end_mask=0,
         rst_frame_mask=0,
-        fwd_frame0_mask=0,
+        fwd_frame0_mask=0b11,
         fwd_frame1_mask=0,
         inv_frame0_mask=0,
         inv_frame1_mask=0,
