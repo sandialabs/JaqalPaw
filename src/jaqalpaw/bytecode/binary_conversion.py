@@ -55,14 +55,13 @@ def convert_freq_full(frqw):
 def convert_phase_full(phsw):
     """Converts to full 40 bit frequency word for
     packing into 256 bit spline data"""
-    convf = int(round(-phsw / 360.0 * (1 << 40)))
+    convf = int(round(phsw / 360.0 * (1 << 40)))
     return convf
 
 
-def convert_phase_full_mod_2pi(phs):
+def convert_phase_full_mod_2pi(phsw):
     """Converts to full 40 bit frequency word for
     packing into 256 bit spline data"""
-    phsw = -phs
     if abs(phsw) >= 360.0:
         phsw %= 360.0
     if phsw >= 180:
