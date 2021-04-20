@@ -445,7 +445,11 @@ class CircuitCompiler(CircuitConstructor):
         """Compile the circuit, starting from parsing the jaqal file"""
         if self.file is None and self.code_literal is None:
             raise CircuitCompilerException("Need an input file!")
-        self.construct_circuit(self.file, override_dict=self.override_dict)
+        self.construct_circuit(
+            self.file,
+            override_dict=self.override_dict,
+            pd_override_dict=self.pd_override_dict,
+        )
         self.apply_delays(self.delay_settings)
         self.extract_gates()
         self.generate_lookup_tables()
