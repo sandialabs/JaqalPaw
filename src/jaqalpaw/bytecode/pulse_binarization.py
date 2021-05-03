@@ -30,12 +30,11 @@ from .encoding_parameters import (
 )
 
 from jaqalpaw.utilities.helper_functions import delist
-from jaqalpaw.utilities.datatypes import Discrete
+from jaqalpaw.utilities.datatypes import Discrete, Mixed
 
 from itertools import zip_longest
 
 from .spline_mapping import cs_mapper_int, cs_mapper_int_auto_shift
-
 
 # ######################################################## #
 # ------------------ PulseData Encoding ------------------ #
@@ -333,6 +332,128 @@ def generate_single_pulse_bytes(
     return final_bytes, [final_bytes]
 
 
+def binarize_parameter(
+    modt,
+    mpdict,
+    *,
+    data,
+    dur,
+    waittrig,
+    bypass,
+    sync_mask,
+    enable_mask,
+    fb_enable_mask,
+    apply_at_eof_mask,
+    rst_frame_mask,
+    fwd_frame0_mask,
+    fwd_frame1_mask,
+    inv_frame0_mask,
+    inv_frame1_mask,
+    DDS,
+):
+    """This function is responsible for determining which method to use for
+    generating the associated bytecode for a pulse with a specific parameter
+    type. If mixed modulation types are used, it recursively descends the input
+    data and returns a flattened byte list."""
+    bytelist = []
+    if not mpdict[modt]["enabled"]:
+        return bytelist
+    n_points = 1 if not hasattr(data, "__iter__") else len(data)
+    if isinstance(data, Mixed):
+        # If parameter contains mixed data, we need to calculate different
+        # combinations of Spline, Discrete, and constant parameters. Here, the
+        # durations are split evenly (timing errors evenly distributed) and
+        # calculated separately for each type, then concatenated.
+        raw_dur = np.round(np.linspace(0, dur, n_points + 1))
+        subdurlist = list(np.diff(raw_dur))
+        for i, d in enumerate(data):
+            subdur = subdurlist[i]
+            bytelist.extend(
+                binarize_parameter(
+                    modt,
+                    mpdict,
+                    data=d,
+                    dur=subdur,
+                    waittrig=waittrig if i == 0 else False,
+                    bypass=bypass,
+                    sync_mask=sync_mask if i == 0 else False,
+                    enable_mask=enable_mask,
+                    fb_enable_mask=fb_enable_mask,
+                    apply_at_eof_mask=apply_at_eof_mask if i == 0 else False,
+                    rst_frame_mask=rst_frame_mask if i == 0 else False,
+                    fwd_frame0_mask=fwd_frame0_mask,
+                    fwd_frame1_mask=fwd_frame1_mask,
+                    inv_frame0_mask=inv_frame0_mask,
+                    inv_frame1_mask=inv_frame1_mask,
+                    DDS=DDS,
+                )
+            )
+        return bytelist
+    if n_points > 1:
+        pulsemode = isinstance(data, Discrete)
+
+        # xdata needs to have unit spacing to work well with the
+        # pdq spline mapping even when data is nonuniform
+        xdata = [i for i in range(n_points)]
+        ydata = list(
+            map(
+                mpdict[modt]["convertFunc"]["discrete" if pulsemode else "spline"],
+                data,
+            )
+        )
+
+        # raw_cycles specifies the actual time grid, distributing
+        # rounding errors must have one more point for pulse mode
+        # step_list is the time per point on the non-uniform grid
+        raw_cycles = np.round(np.linspace(0, dur, n_points + 1 * pulsemode))
+        step_list = list(np.diff(raw_cycles))
+        if min(step_list) < 4:
+            raise Exception("Step size needs to be at least 4 clock cycles, or 10 ns!")
+
+        bytelist.extend(
+            generate_spline_bytes(
+                np.array(xdata),
+                np.array(ydata),
+                step_list,
+                pulse_mode=pulsemode,
+                modtype=mpdict[modt]["modtype"],
+                shift_len=-1,
+                waittrig=waittrig,
+                bypass=bypass,
+                sync_mask=sync_mask,
+                enable_mask=enable_mask,
+                fb_enable_mask=fb_enable_mask,
+                apply_at_eof_mask=apply_at_eof_mask,
+                rst_frame_mask=rst_frame_mask,
+                fwd_frame0_mask=fwd_frame0_mask,
+                fwd_frame1_mask=fwd_frame1_mask,
+                inv_frame0_mask=inv_frame0_mask,
+                inv_frame1_mask=inv_frame1_mask,
+                channel=DDS,
+            )
+        )
+    else:
+        lbytes, _ = generate_single_pulse_bytes(
+            mpdict[modt]["convertFunc"]["discrete"](delist(data)),
+            dur,
+            modtype=mpdict[modt]["modtype"],
+            waittrig=waittrig,
+            bypass=bypass,
+            sync_mask=sync_mask,
+            enable_mask=enable_mask,
+            fb_enable_mask=fb_enable_mask,
+            apply_at_eof_mask=apply_at_eof_mask,
+            rst_frame_mask=rst_frame_mask,
+            fwd_frame0_mask=fwd_frame0_mask,
+            fwd_frame1_mask=fwd_frame1_mask,
+            inv_frame0_mask=inv_frame0_mask,
+            inv_frame1_mask=inv_frame1_mask,
+            channel=DDS,
+        )
+        bytelist.append(lbytes)
+    return bytelist
+
+
 def pulse(
     DDS,
     dur,
@@ -432,63 +553,12 @@ def pulse(
     ]
     bytelist = []
     for modt in modlist:
-        if not mpdict[modt]["enabled"]:
-            continue
-        n_points = (
-            1
-            if not hasattr(mpdict[modt]["data"], "__iter__")
-            else len(mpdict[modt]["data"])
-        )
-        if n_points > 1:
-            pulsemode = isinstance(mpdict[modt]["data"], Discrete)
-
-            # xdata needs to have unit spacing to work well with the
-            # pdq spline mapping even when data is nonuniform
-            xdata = [i for i in range(n_points)]
-            ydata = list(
-                map(
-                    mpdict[modt]["convertFunc"]["discrete" if pulsemode else "spline"],
-                    mpdict[modt]["data"],
-                )
-            )
-
-            # raw_cycles specifies the actual time grid, distributing
-            # rounding errors must have one more point for pulse mode
-            # step_list is the time per point on the non-uniform grid
-            raw_cycles = np.round(np.linspace(0, dur, n_points + 1 * pulsemode))
-            step_list = list(np.diff(raw_cycles))
-            if min(step_list) < 4:
-                raise Exception(
-                    "Step size needs to be at least 4 clock cycles, or 10 ns!"
-                )
-
-            bytelist.append(
-                generate_spline_bytes(
-                    np.array(xdata),
-                    np.array(ydata),
-                    step_list,
-                    pulse_mode=pulsemode,
-                    modtype=mpdict[modt]["modtype"],
-                    shift_len=-1,
-                    waittrig=waittrig,
-                    bypass=bypass,
-                    sync_mask=sync_mask,
-                    enable_mask=enable_mask,
-                    fb_enable_mask=fb_enable_mask,
-                    apply_at_eof_mask=apply_at_eof_mask,
-                    rst_frame_mask=rst_frame_mask,
-                    fwd_frame0_mask=fwd_frame0_mask,
-                    fwd_frame1_mask=fwd_frame1_mask,
-                    inv_frame0_mask=inv_frame0_mask,
-                    inv_frame1_mask=inv_frame1_mask,
-                    channel=DDS,
-                )
-            )
-        else:
-            lbytes, _ = generate_single_pulse_bytes(
-                mpdict[modt]["convertFunc"]["discrete"](delist(mpdict[modt]["data"])),
-                dur,
-                modtype=mpdict[modt]["modtype"],
+        bytelist.append(
+            binarize_parameter(
+                modt,
+                mpdict,
+                data=mpdict[modt]["data"],
+                dur=dur,
                 waittrig=waittrig,
                 bypass=bypass,
                 sync_mask=sync_mask,
@@ -500,9 +570,9 @@ def pulse(
                 fwd_frame1_mask=fwd_frame1_mask,
                 inv_frame0_mask=inv_frame0_mask,
                 inv_frame1_mask=inv_frame1_mask,
-                channel=DDS,
+                DDS=DDS,
             )
-            bytelist.append([lbytes])
+        )
     splist = list(
         filter(
             len,

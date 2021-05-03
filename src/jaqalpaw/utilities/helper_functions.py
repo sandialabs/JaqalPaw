@@ -1,4 +1,4 @@
-from .datatypes import ClockCycles, Discrete, Spline
+from .datatypes import ClockCycles, Discrete, Spline, Mixed
 from .parameters import CLKFREQ
 from ..bytecode.binary_conversion import (
     convert_freq_full,
@@ -14,6 +14,10 @@ from ..emulator.byte_decoding import (
 
 def make_list_hashable(param):
     if isinstance(param, list):
+        if any(
+            map(lambda x: isinstance(x, (list, tuple, Discrete, Spline, Mixed)), param)
+        ):
+            return Mixed(map(make_list_hashable, param))
         return Discrete(param)
     elif isinstance(param, tuple):
         return Spline(param)
