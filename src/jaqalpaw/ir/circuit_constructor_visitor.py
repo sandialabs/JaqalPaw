@@ -14,9 +14,7 @@ from jaqalpaw.utilities.exceptions import CircuitCompilerException
 
 def is_block(gdata):
     """Checks if input is a block type synonym"""
-    if type(gdata) in (Parallel, Sequential):
-        return True
-    return False
+    return isinstance(gdata, (Parallel, Sequential))
 
 
 def is_loop(gdata):
