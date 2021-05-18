@@ -95,20 +95,19 @@ class MacroConstructor:
         glist.extend(new_slice)
         return glist
 
-    def construct_circuit(self, circ_data, init=True):
+    def construct_circuit(self, circ_data, slice_list=None):
         """Generate full circuit from circ_data. Circuit is in the form of PulseData objects."""
-        if init:
-            self.slice_list = []
+        slice_list = slice_list or []
         for g in circ_data:
             if is_block(g):
-                self.slice_list.append(self.construct_gate_block(g))
+                slice_list.append(self.construct_gate_block(g))
             elif is_loop(g):
-                self.slice_list.append(self.construct_gate_loop(g))
+                slice_list.append(self.construct_gate_loop(g))
             elif isinstance(g, list) and isinstance(g[0], list):
-                self.construct_circuit(g, init=False)
+                self.construct_circuit(g, slice_list=slice_list)
             else:
-                self.slice_list.append(self.construct_gate(g).make_durations_equal())
-        return self.slice_list
+                slice_list.append(self.construct_gate(g).make_durations_equal())
+        return slice_list
 
 
 class CircuitConstructorVisitor(Visitor):
