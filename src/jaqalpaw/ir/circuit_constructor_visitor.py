@@ -41,6 +41,19 @@ def make_all_durations_equal(obj):
         obj.make_durations_equal()
 
 
+def populate_gate_slice(gate, num_channels):
+    """Constructs a GateSlice with the relevant PulseData given by the associated PulseDefinition"""
+    gslice = GateSlice(num_channels=num_channels)
+    if gate is not None:
+        for pd in gate:
+            if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
+                # Only append gate data if its duration is long enough
+                # otherwise the gate is ignored, this is useful for
+                # calibrations in which a gate duration is set to zero
+                gslice.channel_data[pd.channel].append(pd)
+    return gslice
+
+
 class MacroConstructor:
     def __init__(self, channel_num):
         self.channel_num = channel_num
@@ -56,14 +69,7 @@ class MacroConstructor:
 
     def construct_gate(self, gate):
         """Constructs a GateSlice with the relevant PulseData given by the associated PulseDefinition"""
-        gslice = GateSlice(num_channels=self.channel_num)
-        for pd in gate:
-            if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
-                # Only append gate data if its duration is long enough
-                # otherwise the gate is ignored, this is useful for
-                # calibrations in which a gate duration is set to zero
-                gslice.channel_data[pd.channel].append(pd)
-        return gslice
+        return populate_gate_slice(gate, num_channels=self.channel_num)
 
     def construct_gate_block(self, gate_block):
         """Walk AST parallel/sequential blocks"""
@@ -141,7 +147,6 @@ class CircuitConstructorVisitor(Visitor):
 
     def visit_GateStatement(self, gate):
         """Create a list of a single GateSlice representing this gate."""
-        gslice = GateSlice(num_channels=self.num_channels)
         if not hasattr(self.pulse_definition, "gate_" + gate.name) and not hasattr(
             self.pulse_definition, "macro_" + gate.name
         ):
@@ -158,14 +163,7 @@ class CircuitConstructorVisitor(Visitor):
             macro_data = get_macro_data(self.pulse_definition, gate.name, args)
             return self.macro_constructor.construct_circuit(macro_data)
         gate_data = get_gate_data(self.pulse_definition, gate.name, args)
-        if gate_data is not None:
-            for pd in gate_data:
-                if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
-                    # Only append gate data if its duration is long enough
-                    # otherwise the gate is ignored, this is useful for
-                    # calibrations in which a gate duration is set to zero
-                    gslice.channel_data[pd.channel].append(pd)
-        return [gslice]
+        return [populate_gate_slice(gate_data, self.num_channels)]
 
     def visit_LoopStatement(self, loop):
         """Return a Loop object representing this loop."""

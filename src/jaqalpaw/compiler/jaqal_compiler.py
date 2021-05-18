@@ -18,8 +18,8 @@ from jaqalpaw.utilities.parameters import CLKFREQ
 from jaqalpaw.bytecode.encoding_parameters import (
     ANCILLA_COMPILER_TAG_BIT,
     ANCILLA_STATE_LSB,
-    MINIMUM_PULSE_CLOCK_CYCLES,
 )
+from ..ir.circuit_constructor_visitor import populate_gate_slice
 
 flatten = lambda x: [y for l in x for y in l]
 
@@ -536,7 +536,6 @@ class CircuitCompiler(CircuitConstructor):
     def get_prepare_all_indices(self):
         self.prepare_all_hashes = dict()
         self.prepare_all_gids = dict()
-        gslice = GateSlice(num_channels=self.channel_num)
         if not hasattr(self.pulse_definition, "gate_" + self.initialize_gate_name):
             raise CircuitCompilerException(
                 f"Pulse definition has no gate named gate_{self.initialize_gate_name}"
@@ -544,13 +543,7 @@ class CircuitCompiler(CircuitConstructor):
         gate_data = getattr(self.pulse_definition, "gate_" + self.initialize_gate_name)(
             self.channel_num
         )
-        if gate_data is not None:
-            for pd in gate_data:
-                if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
-                    # Only append gate data if its duration is long enough
-                    # otherwise the gate is ignored, this is useful for
-                    # calibrations in which a gate duration is set to zero
-                    gslice.channel_data[pd.channel].append(pd)
+        gslice = populate_gate_slice(gate_data, self.channel_num)
         for ch, gsdata in gslice.channel_data.items():
             prep_hash = hash(tuple(gsdata))
             self.prepare_all_hashes[ch] = prep_hash
