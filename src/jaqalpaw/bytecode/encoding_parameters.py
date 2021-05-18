@@ -151,3 +151,8 @@ AMPMOD1 = 0b00010000
 PHSMOD1 = 0b00100000
 FRMROT0 = 0b01000000
 FRMROT1 = 0b10000000
+
+# Set the minimum clock cycles for a pulse to help avoid underflows. This time
+# is determined by state machine transitions for loading another gate, but does
+# not account for serialization of pulse words.
+MINIMUM_PULSE_CLOCK_CYCLES = 4

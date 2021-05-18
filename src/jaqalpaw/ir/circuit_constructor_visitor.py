@@ -10,6 +10,7 @@ from .ast_utilities import (
 )
 from jaqalpaw.utilities.datatypes import Loop, Branch, Case, Parallel, Sequential
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
+from ..bytecode.encoding_parameters import MINIMUM_PULSE_CLOCK_CYCLES
 
 
 def is_block(gdata):
@@ -42,25 +43,28 @@ def make_all_durations_equal(obj):
 
 class MacroConstructor:
     def __init__(self, channel_num):
-        self.CHANNEL_NUM = channel_num
+        self.channel_num = channel_num
         self.slice_list = []
 
     @staticmethod
     def transform_gate_arg(arg):
         """Convert qubit registers to numbers, and return other arguments directly"""
+        if hasattr(arg, "resolve_qubit"):
+            _, index = arg.resolve_qubit()
+            return index
         return arg
 
     def construct_gate(self, gate):
         """Constructs a GateSlice with the relevant PulseData given by the associated PulseDefinition"""
-        gslice = GateSlice(num_channels=self.CHANNEL_NUM)
+        gslice = GateSlice(num_channels=self.channel_num)
         for pd in gate:
-            if pd.dur > 3:
+            if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
                 gslice.channel_data[pd.channel].append(pd)
         return gslice
 
     def construct_gate_block(self, gate_block):
         """Walk AST parallel/sequential blocks"""
-        gslice = GateSlice(num_channels=self.CHANNEL_NUM)
+        gslice = GateSlice(num_channels=self.channel_num)
         glist = []
         if isinstance(gate_block, Parallel):
             for g in gate_block:
@@ -154,7 +158,7 @@ class CircuitConstructorVisitor(Visitor):
         gate_data = get_gate_data(self.pulse_definition, gate.name, args)
         if gate_data is not None:
             for pd in gate_data:
-                if pd.dur > 3:
+                if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
                     gslice.channel_data[pd.channel].append(pd)
         return [gslice]
 

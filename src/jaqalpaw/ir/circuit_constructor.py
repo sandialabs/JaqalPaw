@@ -19,7 +19,7 @@ class CircuitConstructor:
     objects padding gaps with NOPs and ensuring no collisions"""
 
     def __init__(self, channel_num, pulse_definition):
-        self.CHANNEL_NUM = channel_num
+        self.channel_num = channel_num
         self.slice_list = []
         self.pulse_definition = pulse_definition
         self.exported_constants = None
@@ -81,5 +81,5 @@ class CircuitConstructor:
         PulseData objects."""
         ast = self.generate_ast(file, override_dict=override_dict)
         self.slice_list = convert_circuit_to_gateslices(
-            self.pulse_definition, ast, self.CHANNEL_NUM
+            self.pulse_definition, ast, self.channel_num
         )

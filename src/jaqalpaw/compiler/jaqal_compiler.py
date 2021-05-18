@@ -18,6 +18,7 @@ from jaqalpaw.utilities.parameters import CLKFREQ
 from jaqalpaw.bytecode.encoding_parameters import (
     ANCILLA_COMPILER_TAG_BIT,
     ANCILLA_STATE_LSB,
+    MINIMUM_PULSE_CLOCK_CYCLES,
 )
 
 flatten = lambda x: [y for l in x for y in l]
@@ -41,7 +42,6 @@ class CircuitCompiler(CircuitConstructor):
         code_literal=None,
     ):
         super().__init__(num_channels, pulse_definition)
-        self.CHANNEL_NUM = num_channels
         self.file = file
         self.code_literal = code_literal
         self.binary_data = defaultdict(list)
@@ -108,7 +108,7 @@ class CircuitCompiler(CircuitConstructor):
         if not self.compiled:
             self.construct_circuit(self.file, override_dict=self.override_dict)
         self.binary_data = defaultdict(list)
-        circ_main = GateSlice(num_channels=self.CHANNEL_NUM)
+        circ_main = GateSlice(num_channels=self.channel_num)
         self.recursive_append_and_expand(self.slice_list, circ_main)
         self.apply_delays(self.delay_settings, circ_main=circ_main)
         for ch, pd_list in circ_main.channel_data.items():
@@ -126,7 +126,7 @@ class CircuitCompiler(CircuitConstructor):
         if delay_settings is None:
             return
         if circ_main is None:
-            circ_main = GateSlice(num_channels=self.CHANNEL_NUM)
+            circ_main = GateSlice(num_channels=self.channel_num)
             self.recursive_append(self.slice_list, circ_main)
         for ch, pd_list in circ_main.channel_data.items():
             for pd in pd_list:
@@ -137,7 +137,7 @@ class CircuitCompiler(CircuitConstructor):
         """Generate the binary data for direct streaming (bypass mode)"""
         self.binarize_circuit(lru_cache=True, bypass=True)
         if channels is None:
-            channels = list(range(self.CHANNEL_NUM))
+            channels = list(range(self.channel_num))
         bytelist = []
         for ch in channels:
             bytelist.extend(self.binary_data[ch])
@@ -307,7 +307,7 @@ class CircuitCompiler(CircuitConstructor):
         self.gate_sequence_ids = defaultdict(list)
         self.walk_slice(self.slice_list, gate_hashes=self.gate_sequence_hashes)
         self.ordered_gate_identifiers = dict()
-        for ch in range(self.CHANNEL_NUM):
+        for ch in range(self.channel_num):
             self.ordered_gate_identifiers[ch] = dict()
             # Generate contiguous addresses for gate ids (or GLUT addresses) for
             # sequencing gates. They are ordered by recurrence, so gates that
@@ -394,7 +394,7 @@ class CircuitCompiler(CircuitConstructor):
         self.PLUT_data = defaultdict(list)
         self.MMAP_data = defaultdict(dict)
         self.GLUT_data = defaultdict(dict)
-        for ch in range(self.CHANNEL_NUM):
+        for ch in range(self.channel_num):
             gid = 0
             addr = 0
             for k, v in sorted(self.ordered_gate_identifiers[ch].items()):
@@ -409,7 +409,7 @@ class CircuitCompiler(CircuitConstructor):
                 gate_end_addr = addr - 1
                 self.GLUT_data[ch][gid] = (gate_start_addr, gate_end_addr)
                 gid += 1
-        for ch in range(self.CHANNEL_NUM):
+        for ch in range(self.channel_num):
             startind = 0
             for branch in self.branches[ch].values():
                 maxlen = 0
@@ -429,7 +429,7 @@ class CircuitCompiler(CircuitConstructor):
         self.MMAP_bin = defaultdict(list)
         self.GLUT_bin = defaultdict(list)
         self.GSEQ_bin = defaultdict(list)
-        for ch in range(self.CHANNEL_NUM):
+        for ch in range(self.channel_num):
             self.PLUT_bin[ch] = program_PLUT(
                 {v: i for i, v in enumerate(self.PLUT_data[ch])}, ch
             )
@@ -455,11 +455,11 @@ class CircuitCompiler(CircuitConstructor):
         packet_data = []
         prog_data = []
         seq_data = []
-        for bbind in range(0, self.CHANNEL_NUM, 8):
+        for bbind in range(0, self.channel_num, 8):
             prog_data = []
             seq_data = []
             packet_data = []
-            for chnm in range(bbind, min(bbind + 8, self.CHANNEL_NUM)):
+            for chnm in range(bbind, min(bbind + 8, self.channel_num)):
                 if channel_mask is None or (1 << chnm) & channel_mask:
                     for pd in self.last_packet_pulse_data(chnm):
                         packet_data.extend(pd.binarize(bypass=True, lru_cache=False))
@@ -482,28 +482,28 @@ class CircuitCompiler(CircuitConstructor):
         The channel_mask is an N bit mask that is used to selectively filter out
         data by channel, where 0 prevents the data from being sent and the LSB
         corresponds to channel 0. If channel_mask is None, data is supplied for
-        all channels up to self.CHANNEL_NUM"""
+        all channels up to self.channel_num"""
         if not self.compiled:
             self.compile()
         if channel_mask is None:
-            channel_mask = (1 << self.CHANNEL_NUM) - 1
+            channel_mask = (1 << self.channel_num) - 1
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
         self.sequence_data = list()
-        if self.CHANNEL_NUM > 8:
-            for bbind in range(0, self.CHANNEL_NUM, 8):
+        if self.channel_num > 8:
+            for bbind in range(0, self.channel_num, 8):
                 board_programming_data = list()
                 board_sequence_data = list()
                 for bindata in zip_longest(
                     self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
-                    for ch in range(bbind, min(bbind + 8, self.CHANNEL_NUM))
+                    for ch in range(bbind, min(bbind + 8, self.channel_num))
                     if (1 << ch) & channel_mask
                 ):
                     board_programming_data.extend(bindata[0])
                 for bindata in zip_longest(
                     *list(
                         self.GSEQ_bin[ch]
-                        for ch in range(bbind, min(bbind + 8, self.CHANNEL_NUM))
+                        for ch in range(bbind, min(bbind + 8, self.channel_num))
                         if (1 << ch) & channel_mask
                     )
                 ):
@@ -516,14 +516,14 @@ class CircuitCompiler(CircuitConstructor):
             board_sequence_data = list()
             for bindata in zip_longest(
                 self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
-                for ch in range(self.CHANNEL_NUM)
+                for ch in range(self.channel_num)
                 if (1 << ch) & channel_mask
             ):
                 board_programming_data.extend(bindata[0])
             for bindata in zip_longest(
                 *list(
                     self.GSEQ_bin[ch]
-                    for ch in range(self.CHANNEL_NUM)
+                    for ch in range(self.channel_num)
                     if (1 << ch) & channel_mask
                 )
             ):
@@ -536,17 +536,17 @@ class CircuitCompiler(CircuitConstructor):
     def get_prepare_all_indices(self):
         self.prepare_all_hashes = dict()
         self.prepare_all_gids = dict()
-        gslice = GateSlice(num_channels=self.CHANNEL_NUM)
+        gslice = GateSlice(num_channels=self.channel_num)
         if not hasattr(self.pulse_definition, "gate_" + self.initialize_gate_name):
             raise CircuitCompilerException(
                 f"Pulse definition has no gate named gate_{self.initialize_gate_name}"
             )
         gate_data = getattr(self.pulse_definition, "gate_" + self.initialize_gate_name)(
-            self.CHANNEL_NUM
+            self.channel_num
         )
         if gate_data is not None:
             for pd in gate_data:
-                if pd.dur > 3:
+                if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
                     gslice.channel_data[pd.channel].append(pd)
         for ch, gsdata in gslice.channel_data.items():
             prep_hash = hash(tuple(gsdata))
@@ -578,23 +578,23 @@ class CircuitCompiler(CircuitConstructor):
         if not self.compiled:
             self.compile()
         if channel_mask is None:
-            channel_mask = (1 << self.CHANNEL_NUM) - 1
+            channel_mask = (1 << self.channel_num) - 1
         self.final_byte_dict = defaultdict(list)
         programming_data = list()
         sequence_data = list()
         partial_GSEQ_bin = self.generate_gate_sequence_from_index(starting_index)
-        if self.CHANNEL_NUM > 8:
-            for bbind in range(0, self.CHANNEL_NUM, 8):
+        if self.channel_num > 8:
+            for bbind in range(0, self.channel_num, 8):
                 board_programming_data = list()
                 board_sequence_data = list()
                 # for bindata in zip_longest(self.GLUT_bin[ch]+self.MMAP_bin[ch]+self.PLUT_bin[ch]
-                # for ch in range(bbind, min(bbind+8, self.CHANNEL_NUM))
+                # for ch in range(bbind, min(bbind+8, self.channel_num))
                 # if (1 << ch) & channel_mask):
                 # board_programming_data.extend(bindata[0])
                 for bindata in zip_longest(
                     *list(
                         partial_GSEQ_bin[ch]
-                        for ch in range(bbind, min(bbind + 8, self.CHANNEL_NUM))
+                        for ch in range(bbind, min(bbind + 8, self.channel_num))
                         if (1 << ch) & channel_mask
                     )
                 ):
@@ -606,13 +606,13 @@ class CircuitCompiler(CircuitConstructor):
             board_programming_data = list()
             board_sequence_data = list()
             # for bindata in zip_longest(self.GLUT_bin[ch]+self.MMAP_bin[ch]+self.PLUT_bin[ch]
-            # for ch in range(self.CHANNEL_NUM)
+            # for ch in range(self.channel_num)
             # if (1 << ch) & channel_mask):
             # board_programming_data.extend(bindata[0])
             for bindata in zip_longest(
                 *list(
                     partial_GSEQ_bin[ch]
-                    for ch in range(self.CHANNEL_NUM)
+                    for ch in range(self.channel_num)
                     if (1 << ch) & channel_mask
                 )
             ):
