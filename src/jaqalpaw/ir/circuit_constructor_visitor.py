@@ -59,6 +59,9 @@ class MacroConstructor:
         gslice = GateSlice(num_channels=self.channel_num)
         for pd in gate:
             if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
+                # Only append gate data if its duration is long enough
+                # otherwise the gate is ignored, this is useful for
+                # calibrations in which a gate duration is set to zero
                 gslice.channel_data[pd.channel].append(pd)
         return gslice
 
@@ -159,6 +162,9 @@ class CircuitConstructorVisitor(Visitor):
         if gate_data is not None:
             for pd in gate_data:
                 if pd.dur >= MINIMUM_PULSE_CLOCK_CYCLES:
+                    # Only append gate data if its duration is long enough
+                    # otherwise the gate is ignored, this is useful for
+                    # calibrations in which a gate duration is set to zero
                     gslice.channel_data[pd.channel].append(pd)
         return [gslice]
 
