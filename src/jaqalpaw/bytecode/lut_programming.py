@@ -64,6 +64,7 @@ def program_PLUT(lut, ch=0):
     plut_PROG_list = []
     for data, addr in lut.items():
         if address_is_invalid(addr, PLUTW):
+            return plut_PROG_list, data
             raise CircuitCompilerException(
                 f"PLUT programming error, address {addr} ({bin(addr)}) "
                 f"exceeds maximum width of {PLUTW}"
@@ -73,10 +74,10 @@ def program_PLUT(lut, ch=0):
         intdata |= PROGPLUT << PROG_MODE_LSB
         intdata |= addr << PLUT_ADDR_LSB
         plut_PROG_list.append(int_to_bytes(intdata))
-    return plut_PROG_list
+    return plut_PROG_list, None
 
 
-def program_SLUT(lut, ch=0):
+def program_SLUT(lut, ch=0, offset=0):
     """Generate programming data for the SLUT"""
     slut_PROG_list = []
     current_byte = 0
@@ -84,9 +85,16 @@ def program_SLUT(lut, ch=0):
     BYTELIM = SLUT_BYTECNT
     for addr, data in lut.items():
         if address_is_invalid(addr, SLUTW):
+            return slut_PROG_list, addr
             raise CircuitCompilerException(
                 f"MMAP LUT programming error, address {addr} ({bin(addr)}) "
                 f"exceeds maximum width of {SLUTW}"
+            )
+        if address_is_invalid(data, PLUTW):
+            return slut_PROG_list, addr
+            raise CircuitCompilerException(
+                f"MMAP LUT programming error, data {data} ({bin(data)}) "
+                f"exceeds maximum width of {PLUTW}"
             )
         if byte_count >= BYTELIM:
             current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
@@ -102,7 +110,7 @@ def program_SLUT(lut, ch=0):
     current_byte |= PROGSLUT << PROG_MODE_LSB
     current_byte |= byte_count << SLUT_BYTECNT_LSB
     slut_PROG_list.append(int_to_bytes(current_byte))
-    return slut_PROG_list
+    return slut_PROG_list, None
 
 
 def program_GLUT(lut, ch=0):
@@ -113,9 +121,22 @@ def program_GLUT(lut, ch=0):
     BYTELIM = GLUT_BYTECNT
     for addr, data in lut.items():
         if address_is_invalid(addr, GPRGW):
+            return glut_PROG_list, addr
             raise CircuitCompilerException(
                 f"GLUT programming error, address {addr} ({bin(addr)}) "
                 f"exceeds maximum width of {GPRGW}"
+            )
+        if address_is_invalid(data[0], SLUTW):
+            return glut_PROG_list, addr
+            raise CircuitCompilerException(
+                f"GLUT programming error, high data {data[0]} ({bin(data[0])}) "
+                f"exceeds maximum width of {SLUTW}"
+            )
+        if address_is_invalid(data[1], SLUTW):
+            return glut_PROG_list, addr
+            raise CircuitCompilerException(
+                f"GLUT programming error, high data {data[1]} ({bin(data[1])}) "
+                f"exceeds maximum width of {SLUTW}"
             )
         if byte_count >= BYTELIM:
             current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
@@ -131,7 +152,7 @@ def program_GLUT(lut, ch=0):
     current_byte |= PROGGLUT << PROG_MODE_LSB
     current_byte |= byte_count << GLUT_BYTECNT_LSB
     glut_PROG_list.append(int_to_bytes(current_byte))
-    return glut_PROG_list
+    return glut_PROG_list, None
 
 
 def tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla):

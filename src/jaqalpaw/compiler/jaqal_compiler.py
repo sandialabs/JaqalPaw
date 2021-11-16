@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from collections import defaultdict
 from itertools import zip_longest
@@ -41,6 +42,7 @@ class CircuitCompiler(CircuitConstructor):
         pulse_definition=None,
         global_delay=None,
         code_literal=None,
+        slice_list=None,
     ):
         super().__init__(num_channels, pulse_definition)
         self.file = file
@@ -67,7 +69,10 @@ class CircuitCompiler(CircuitConstructor):
         self.delay_settings = None
         self.set_global_delay(global_delay)
         self.initialize_gate_name = "prepare_all"
-        self.import_gate_pulses()
+        self.slice_list = slice_list
+        if slice_list is None:
+            self.import_gate_pulses()
+        self.cclist = []
 
     def set_global_delay(self, global_delay=None):
         if global_delay is None:
@@ -426,6 +431,8 @@ class CircuitCompiler(CircuitConstructor):
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
+        for k in self.PLUT_data:
+            print(f"Channel {k}, len {len(self.PLUT_data[k])}")
 
     def generate_programming_data(self):
         """Convert the LUT programming IR representations to bytecode"""
@@ -433,28 +440,75 @@ class CircuitCompiler(CircuitConstructor):
         self.MMAP_bin = defaultdict(list)
         self.GLUT_bin = defaultdict(list)
         self.GSEQ_bin = defaultdict(list)
+        badinds = []
         for ch in range(self.channel_num):
-            self.PLUT_bin[ch] = program_PLUT(
+            self.PLUT_bin[ch], errp = program_PLUT(
                 {v: i for i, v in enumerate(self.PLUT_data[ch])}, ch
             )
-            self.MMAP_bin[ch] = program_SLUT(self.MMAP_data[ch], ch)
-            self.GLUT_bin[ch] = program_GLUT(self.GLUT_data[ch], ch)
+            self.GLUT_bin[ch], errg = program_GLUT(self.GLUT_data[ch], ch)
+            self.MMAP_bin[ch], errm = program_SLUT(self.MMAP_data[ch], ch)
             self.GSEQ_bin[ch] = gate_sequence_bytes(self.gate_sequence_ids[ch], ch)
+            if errp:
+                for i, d in enumerate(self.MMAP_data[ch].values()):
+                    if d == errp:
+                        indp = i
+                        break
+                for i, (gi, (gu, gl)) in enumerate(self.GLUT_data[ch].items()):
+                    if gu >= indp or gl >= indp:
+                        indg = i
+                        bgid = gi
+                        break
+                for i, gid in enumerate(self.gate_sequence_ids[ch]):
+                    if gid == bgid:
+                        inds = i
+                        badinds.append(inds)
+            if errm:
+                for i, a in enumerate(self.MMAP_data[ch]):
+                    if a == errm:
+                        indp = i
+                        break
+                for i, (gi, (gu, gl)) in enumerate(self.GLUT_data[ch].items()):
+                    if gu >= indp or gl >= indp:
+                        indg = i
+                        bgid = gi
+                        break
+                for i, gid in enumerate(self.gate_sequence_ids[ch]):
+                    if gid == bgid:
+                        inds = i
+                        badinds.append(inds)
+            if errg:
+                for i, gid in enumerate(self.gate_sequence_ids[ch]):
+                    if gid == bgid:
+                        inds = i
+                        badinds.append(inds)
+        return badinds
+
+
+
 
     def compile(self):
         """Compile the circuit, starting from parsing the jaqal file"""
-        if self.file is None and self.code_literal is None:
-            raise CircuitCompilerException("Need an input file!")
-        self.construct_circuit(
-            self.file,
-            override_dict=self.override_dict,
-            pd_override_dict=self.pd_override_dict,
-        )
-        self.apply_delays(self.delay_settings)
+        if self.slice_list is None:
+            if self.file is None and self.code_literal is None:
+                raise CircuitCompilerException("Need an input file!")
+            self.construct_circuit(
+                self.file,
+                override_dict=self.override_dict,
+                pd_override_dict=self.pd_override_dict,
+            )
+            self.apply_delays(self.delay_settings)
         self.extract_gates()
         self.generate_lookup_tables()
-        self.generate_programming_data()
+        gpres = self.generate_programming_data()
+        slice_ind = None
+        if gpres:
+            slice_ind = min(gpres)
+            cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
+            self.cclist.append(cc1)
+            cc2 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[slice_ind:])
+            self.cclist.append(cc2)
         self.compiled = True
+        return slice_ind, None, None
 
     def last_packet_pulse_data(self, ch):
         return [PulseData(ch, 3e-7, waittrig=False), PulseData(ch, 3e-7, waittrig=True)]
@@ -498,20 +552,41 @@ class CircuitCompiler(CircuitConstructor):
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
         self.sequence_data = list()
-        if self.channel_num > 8:
-            for bbind in range(0, self.channel_num, 8):
+        if len(self.cclist) == 0:
+            if self.channel_num > 8:
+                for bbind in range(0, self.channel_num, 8):
+                    board_programming_data = list()
+                    board_sequence_data = list()
+                    for bindata in zip_longest(
+                        self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                        for ch in range(bbind, min(bbind + 8, self.channel_num))
+                        if (1 << ch) & channel_mask
+                    ):
+                        board_programming_data.extend(bindata[0])
+                    for bindata in zip_longest(
+                        *list(
+                            self.GSEQ_bin[ch]
+                            for ch in range(bbind, min(bbind + 8, self.channel_num))
+                            if (1 << ch) & channel_mask
+                        )
+                    ):
+                        if bindata:
+                            board_sequence_data.extend(bindata)
+                    self.programming_data.append(board_programming_data)
+                    self.sequence_data.append(board_sequence_data)
+            else:
                 board_programming_data = list()
                 board_sequence_data = list()
                 for bindata in zip_longest(
                     self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
-                    for ch in range(bbind, min(bbind + 8, self.channel_num))
+                    for ch in range(self.channel_num)
                     if (1 << ch) & channel_mask
                 ):
                     board_programming_data.extend(bindata[0])
                 for bindata in zip_longest(
                     *list(
                         self.GSEQ_bin[ch]
-                        for ch in range(bbind, min(bbind + 8, self.channel_num))
+                        for ch in range(self.channel_num)
                         if (1 << ch) & channel_mask
                     )
                 ):
@@ -520,25 +595,17 @@ class CircuitCompiler(CircuitConstructor):
                 self.programming_data.append(board_programming_data)
                 self.sequence_data.append(board_sequence_data)
         else:
-            board_programming_data = list()
-            board_sequence_data = list()
-            for bindata in zip_longest(
-                self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
-                for ch in range(self.channel_num)
-                if (1 << ch) & channel_mask
-            ):
-                board_programming_data.extend(bindata[0])
-            for bindata in zip_longest(
-                *list(
-                    self.GSEQ_bin[ch]
-                    for ch in range(self.channel_num)
-                    if (1 << ch) & channel_mask
-                )
-            ):
-                if bindata:
-                    board_sequence_data.extend(bindata)
-            self.programming_data.append(board_programming_data)
-            self.sequence_data.append(board_sequence_data)
+            for cc in self.cclist:
+                pdat, sdat = cc.bytecode(channel_mask=channel_mask)
+                if not self.sequence_data:
+                    self.sequence_data = pdat[:]
+                    for i, sd in enumerate(sdat):
+                        self.sequence_data[i] += sd
+                else:
+                    for i, pd in enumerate(pdat):
+                        self.sequence_data[i] += pd
+                    for i, sd in enumerate(sdat):
+                        self.sequence_data[i] += sd
         return self.programming_data, self.sequence_data
 
     def get_prepare_all_indices(self):
