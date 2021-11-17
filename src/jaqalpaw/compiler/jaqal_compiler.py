@@ -451,6 +451,8 @@ class CircuitCompiler(CircuitConstructor):
                     if d == errp:
                         indp = i
                         break
+                else:
+                    indp = 1 << 12
                 for i, (gi, (gu, gl)) in enumerate(self.GLUT_data[ch].items()):
                     if gu >= indp or gl >= indp:
                         bgid = gi
@@ -465,6 +467,8 @@ class CircuitCompiler(CircuitConstructor):
                     if a == errm:
                         indp = i
                         break
+                else:
+                    indp = 1 << 12
                 for i, (gi, (gu, gl)) in enumerate(self.GLUT_data[ch].items()):
                     if gu >= indp or gl >= indp:
                         bgid = gi
@@ -480,7 +484,33 @@ class CircuitCompiler(CircuitConstructor):
                         inds = i
                         badinds.append(inds)
                         break
-        return badinds
+        _, slexpand = self.lensl(self.slice_list)
+        #badindso = list(map(lambda x: slexpand.index(x), badinds))
+
+        # Bad/failing indices (or addresses) are captured from gate_sequence_ids, which handles loop expansion.
+        # The index mapping onto slice_list fails when Loop constructs are used (in jaqal or jaqalpaw) since
+        # slice_list is still nested. The self.lensl() function finds the qualified length of the slice list and
+        # returns a flattened list of indices. The associated index is either found or approximated by a filter
+        # since explicit loop expansion in slice_list poses additional challenges and truncating to the point
+        # before the problem loop is hopefully sufficient.
+        badindso = list(map(lambda x: len(list(filter(lambda y: y <= x, slexpand))) - 1, badinds))
+        if len(badindso) > 0 and min(badindso) < 0:
+            raise CircuitCompilerException(f"LUT size exceeded within first loop construct")
+        return badindso
+
+    def lensl(self, slicelist, istop=True):
+        l = 0
+        llist = []
+        for sl in slicelist:
+            if isinstance(sl, Loop):
+                l += self.lensl(sl, istop=False)[0]*sl.repeats
+            elif isinstance(sl, list):
+                l += self.lensl(sl, istop=False)[0]
+            else:
+                l += 1
+            if istop:
+                llist.append(l)
+        return l, llist
 
     def compile(self):
         """Compile the circuit, starting from parsing the jaqal file"""
@@ -499,13 +529,31 @@ class CircuitCompiler(CircuitConstructor):
         slice_ind = None
         if gpres:
             slice_ind = min(gpres)
-            if slice_ind > len(self.slice_list)//2:
-                start_si = len(self.slice_list)//2
-            else:
-                start_si = max(slice_ind-10, slice_ind//2)
-            dur_list = [self.get_slice_duration(s) for s in reversed(self.slice_list[start_si:slice_ind])]
-            slice_ind -= dur_list.index(max(dur_list))
-            cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
+            valid_si = False
+            while not valid_si:
+                # this loop provides additional safety against fetching the wrong index
+                # Hopefully the more accurate length comparison against slice_list will render the loop moot
+                if slice_ind > len(self.slice_list)//2:
+                    start_si = len(self.slice_list)//2
+                else:
+                    start_si = max(slice_ind-10, slice_ind//2)
+                dur_list = [self.get_slice_duration(s) for s in reversed(self.slice_list[start_si:slice_ind])]
+                slice_ind -= dur_list.index(max(dur_list))
+                cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
+                # The rest of the loop is for index checking, iff the loop is removed the above lines should
+                # remain, but the rest of the body of the while loop after this comment can be deleted.
+                cc1.extract_gates()
+                cc1.generate_lookup_tables()
+                cc1gpres = cc1.generate_programming_data()
+                if cc1gpres:
+                    print(f"cc1gpres is {cc1gpres}")
+                    if min(cc1gpres) < slice_ind:
+                        slice_ind = min(cc1gpres)
+                    else:
+                        slice_ind -= 1
+                    print(f"slice_ind now {slice_ind}")
+                else:
+                    valid_si = True
             self.cclist.append(cc1)
             cc2 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[slice_ind:])
             self.cclist.append(cc2)
