@@ -431,8 +431,6 @@ class CircuitCompiler(CircuitConstructor):
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
-        for k in self.PLUT_data:
-            print(f"Channel {k}, len {len(self.PLUT_data[k])}")
 
     def generate_programming_data(self):
         """Convert the LUT programming IR representations to bytecode"""
@@ -455,13 +453,13 @@ class CircuitCompiler(CircuitConstructor):
                         break
                 for i, (gi, (gu, gl)) in enumerate(self.GLUT_data[ch].items()):
                     if gu >= indp or gl >= indp:
-                        indg = i
                         bgid = gi
                         break
                 for i, gid in enumerate(self.gate_sequence_ids[ch]):
                     if gid == bgid:
                         inds = i
                         badinds.append(inds)
+                        break
             if errm:
                 for i, a in enumerate(self.MMAP_data[ch]):
                     if a == errm:
@@ -469,22 +467,20 @@ class CircuitCompiler(CircuitConstructor):
                         break
                 for i, (gi, (gu, gl)) in enumerate(self.GLUT_data[ch].items()):
                     if gu >= indp or gl >= indp:
-                        indg = i
                         bgid = gi
                         break
                 for i, gid in enumerate(self.gate_sequence_ids[ch]):
                     if gid == bgid:
                         inds = i
                         badinds.append(inds)
+                        break
             if errg:
                 for i, gid in enumerate(self.gate_sequence_ids[ch]):
                     if gid == bgid:
                         inds = i
                         badinds.append(inds)
+                        break
         return badinds
-
-
-
 
     def compile(self):
         """Compile the circuit, starting from parsing the jaqal file"""
@@ -503,12 +499,24 @@ class CircuitCompiler(CircuitConstructor):
         slice_ind = None
         if gpres:
             slice_ind = min(gpres)
+            if slice_ind > len(self.slice_list)//2:
+                start_si = len(self.slice_list)//2
+            else:
+                start_si = max(slice_ind-10, slice_ind//2)
+            dur_list = [self.get_slice_duration(s) for s in reversed(self.slice_list[start_si:slice_ind])]
+            slice_ind -= dur_list.index(max(dur_list))
             cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
             self.cclist.append(cc1)
             cc2 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[slice_ind:])
             self.cclist.append(cc2)
         self.compiled = True
         return slice_ind, None, None
+
+    def get_slice_duration(self, s):
+        if isinstance(s, GateSlice):
+            return s.total_duration()
+        else:
+            return sum(map(self.get_slice_duration, s))
 
     def last_packet_pulse_data(self, ch):
         return [PulseData(ch, 3e-7, waittrig=False), PulseData(ch, 3e-7, waittrig=True)]
@@ -606,6 +614,8 @@ class CircuitCompiler(CircuitConstructor):
                         self.sequence_data[i] += pd
                     for i, sd in enumerate(sdat):
                         self.sequence_data[i] += sd
+            for _ in self.sequence_data:
+                self.programming_data.append([])
         return self.programming_data, self.sequence_data
 
     def get_prepare_all_indices(self):
