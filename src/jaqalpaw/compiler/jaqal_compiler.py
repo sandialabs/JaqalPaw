@@ -529,31 +529,40 @@ class CircuitCompiler(CircuitConstructor):
         slice_ind = None
         if gpres:
             slice_ind = min(gpres)
-            valid_si = False
-            while not valid_si:
-                # this loop provides additional safety against fetching the wrong index
-                # Hopefully the more accurate length comparison against slice_list will render the loop moot
-                if slice_ind > len(self.slice_list)//2:
-                    start_si = len(self.slice_list)//2
+            if False:
+                valid_si = False
+                while not valid_si:
+                    # this loop provides additional safety against fetching the wrong index
+                    # Hopefully the more accurate length comparison against slice_list will render the loop moot
+                    if slice_ind > len(self.slice_list)//2:
+                        start_si = len(self.slice_list)//2
+                    else:
+                        start_si = max(slice_ind-10, slice_ind//2)
+                    dur_list = [self.get_slice_duration(s) for s in reversed(self.slice_list[start_si:slice_ind])]
+                    slice_ind -= dur_list.index(max(dur_list))
+                    cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
+                    # The rest of the loop is for index checking, iff the loop is removed the above lines should
+                    # remain, but the rest of the body of the while loop after this comment can be deleted.
+                    cc1.extract_gates()
+                    cc1.generate_lookup_tables()
+                    cc1gpres = cc1.generate_programming_data()
+                    if cc1gpres:
+                        print(f"cc1gpres is {cc1gpres}")
+                        if min(cc1gpres) < slice_ind:
+                            slice_ind = min(cc1gpres)
+                        else:
+                            slice_ind -= 1
+                        print(f"slice_ind now {slice_ind}")
+                    else:
+                        valid_si = True
+            else:
+                if slice_ind > len(self.slice_list) // 2:
+                    start_si = len(self.slice_list) // 2
                 else:
-                    start_si = max(slice_ind-10, slice_ind//2)
+                    start_si = max(slice_ind - 10, slice_ind // 2)
                 dur_list = [self.get_slice_duration(s) for s in reversed(self.slice_list[start_si:slice_ind])]
                 slice_ind -= dur_list.index(max(dur_list))
                 cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
-                # The rest of the loop is for index checking, iff the loop is removed the above lines should
-                # remain, but the rest of the body of the while loop after this comment can be deleted.
-                cc1.extract_gates()
-                cc1.generate_lookup_tables()
-                cc1gpres = cc1.generate_programming_data()
-                if cc1gpres:
-                    print(f"cc1gpres is {cc1gpres}")
-                    if min(cc1gpres) < slice_ind:
-                        slice_ind = min(cc1gpres)
-                    else:
-                        slice_ind -= 1
-                    print(f"slice_ind now {slice_ind}")
-                else:
-                    valid_si = True
             self.cclist.append(cc1)
             cc2 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[slice_ind:])
             self.cclist.append(cc2)
