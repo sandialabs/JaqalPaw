@@ -134,8 +134,9 @@ async def spline_engine(
         # consistent with how the hardware is actually operating.
         if U1 == 0 and U2 == 0 and U3 == 0:
             time_list.append(time_list[-1] + dur)
-            if (
-                mod_type in (FRMROT0INT, FRMROT1INT)
+            if mod_type in (
+                FRMROT0INT,
+                FRMROT1INT,
             ):  # then we have a z rotation which must accumulate from old values
                 if reset_accum:
                     last_val = 0
@@ -187,8 +188,9 @@ async def spline_engine(
             xdata_real = list(map(lambda x: time_list[-1] + x, xdata))
             time_list.extend(xdata_real[:])
             last_val = data_list[-1]
-            if (
-                mod_type in (FRMROT0INT, FRMROT1INT)
+            if mod_type in (
+                FRMROT0INT,
+                FRMROT1INT,
             ):  # then we have a z rotation which must accumulate from old values
                 if reset_accum:
                     last_val = 0
@@ -196,11 +198,11 @@ async def spline_engine(
                 data_list.extend(last_val + eof_data + np.array(spline_data_real))
                 eof_data = 0
                 if mod_type == FRMROT0INT:
-                    fwd_frame0_mask_list.extend([fwd_frame0_mask]*len(xdata_real))
-                    inv_frame0_mask_list.extend([inv_frame0_mask]*len(xdata_real))
+                    fwd_frame0_mask_list.extend([fwd_frame0_mask] * len(xdata_real))
+                    inv_frame0_mask_list.extend([inv_frame0_mask] * len(xdata_real))
                 else:
-                    fwd_frame1_mask_list.extend([fwd_frame1_mask]*len(xdata_real))
-                    inv_frame1_mask_list.extend([inv_frame1_mask]*len(xdata_real))
+                    fwd_frame1_mask_list.extend([fwd_frame1_mask] * len(xdata_real))
+                    inv_frame1_mask_list.extend([inv_frame1_mask] * len(xdata_real))
             else:
                 data_list.extend(spline_data_real)
             print(
