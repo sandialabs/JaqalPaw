@@ -127,7 +127,7 @@ def generate_bytes(
     final_data = []
     final_bytes = b""
     for n, x in enumerate(xdata):
-        if modtype & (FRMROT0 | FRMROT1):
+        if modtype & (FRMROT0 | FRMROT1) and n != 0:
             v0 = 0
         else:
             v0 = int(coeffs[3, n])
