@@ -294,14 +294,14 @@ def plot_octet_emulator_output(
     master_data_record = {
         c: {
             d: {
-                "time": copy.copy([0]),
-                "data": copy.copy([0]),
-                "waittrig": copy.copy([0]),
-                "enablemask": copy.copy([0]),
-                "fwd_frame0_mask": copy.copy([0]),
-                "inv_frame0_mask": copy.copy([0]),
-                "fwd_frame1_mask": copy.copy([0]),
-                "inv_frame1_mask": copy.copy([0]),
+                "time": [0],
+                "data": [0],
+                "waittrig": [0],
+                "enablemask": [0],
+                "fwd_frame0_mask": [0],
+                "inv_frame0_mask": [0],
+                "fwd_frame1_mask": [0],
+                "inv_frame1_mask": [0],
             }
             for d in range(8)
         }
