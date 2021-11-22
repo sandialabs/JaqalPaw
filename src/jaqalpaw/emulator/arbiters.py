@@ -6,6 +6,10 @@ from jaqalpaw.bytecode.encoding_parameters import (
     APPLY_EOF_LSB,
     ANCILLA_COMPILER_TAG_BIT,
     ANCILLA_STATE_LSB,
+    FWD_FRM_T0_LSB,
+    INV_FRM_T0_LSB,
+    FRMROT0INT,
+    FRMROT1INT,
 )
 from .byte_decoding import *
 
@@ -88,6 +92,10 @@ async def spline_engine(
     data_list,
     waittrig_list,
     enablemask_list,
+    fwd_frame0_mask_list,
+    inv_frame0_mask_list,
+    fwd_frame1_mask_list,
+    inv_frame1_mask_list,
 ):
     """Converts the spline coefficients to a format that can be passed into a SplineEngine emulator,
     which generates the corresponding output and stores the data in time_list and data_list for
@@ -98,7 +106,17 @@ async def spline_engine(
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
         waittrig = (data >> WAIT_TRIG_LSB) & 0b1
         enablemask = (data >> OUTPUT_EN_LSB) & 0b1
+        fwd_frame0_mask = 0
+        inv_frame0_mask = 0
+        fwd_frame1_mask = 0
+        inv_frame1_mask = 0
         mod_type = (data >> MODTYPE_LSB) & 0b111
+        if mod_type == FRMROT0INT:
+            fwd_frame0_mask = (data >> FWD_FRM_T0_LSB) & 0b11
+            inv_frame0_mask = (data >> INV_FRM_T0_LSB) & 0b11
+        elif mod_type == FRMROT1INT:
+            fwd_frame1_mask = (data >> FWD_FRM_T0_LSB) & 0b11
+            inv_frame1_mask = (data >> INV_FRM_T0_LSB) & 0b11
         shift = (data >> SPLSHIFT_LSB) & 0b11111
         channel = (data >> DMA_MUX_LSB) & 0b111
         reset_accum = (data >> CLR_FRAME_LSB) & 0b1
@@ -117,7 +135,7 @@ async def spline_engine(
         if U1 == 0 and U2 == 0 and U3 == 0:
             time_list.append(time_list[-1] + dur)
             if (
-                mod_type > 5
+                mod_type in (FRMROT0INT, FRMROT1INT)
             ):  # then we have a z rotation which must accumulate from old values
                 if reset_accum:
                     last_val = 0
@@ -130,6 +148,12 @@ async def spline_engine(
                 else:
                     data_list.append(last_val + U0_real + eof_data)
                     eof_data = 0
+                if mod_type == FRMROT0INT:
+                    fwd_frame0_mask_list.append(fwd_frame0_mask)
+                    inv_frame0_mask_list.append(inv_frame0_mask)
+                else:
+                    fwd_frame1_mask_list.append(fwd_frame1_mask)
+                    inv_frame1_mask_list.append(inv_frame1_mask)
             else:
                 data_list.append(U0_real)
                 waittrig_list[-1] = waittrig
@@ -164,13 +188,19 @@ async def spline_engine(
             time_list.extend(xdata_real[:])
             last_val = data_list[-1]
             if (
-                mod_type > 5
+                mod_type in (FRMROT0INT, FRMROT1INT)
             ):  # then we have a z rotation which must accumulate from old values
                 if reset_accum:
                     last_val = 0
                     eof_data = 0
                 data_list.extend(last_val + eof_data + np.array(spline_data_real))
                 eof_data = 0
+                if mod_type == FRMROT0INT:
+                    fwd_frame0_mask_list.extend([fwd_frame0_mask]*len(xdata_real))
+                    inv_frame0_mask_list.extend([inv_frame0_mask]*len(xdata_real))
+                else:
+                    fwd_frame1_mask_list.extend([fwd_frame1_mask]*len(xdata_real))
+                    inv_frame1_mask_list.extend([inv_frame1_mask]*len(xdata_real))
             else:
                 data_list.extend(spline_data_real)
             print(

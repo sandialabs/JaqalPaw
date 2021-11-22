@@ -98,6 +98,10 @@ async def firmware_emulator(
                     master_data_record[nc][nd]["data"],  # y axis plot data
                     master_data_record[nc][nd]["waittrig"],
                     master_data_record[nc][nd]["enablemask"],
+                    master_data_record[nc][nd]["fwd_frame0_mask"],
+                    master_data_record[nc][nd]["inv_frame0_mask"],
+                    master_data_record[nc][nd]["fwd_frame1_mask"],
+                    master_data_record[nc][nd]["inv_frame1_mask"],
                 )
             )
             tasks.append(task)
@@ -139,6 +143,18 @@ async def firmware_emulator(
             master_data_record[nc][nd]["enablemask"][:-1] = master_data_record[nc][nd][
                 "enablemask"
             ][1:]
+            master_data_record[nc][nd]["fwd_frame0_mask"][:-1] = master_data_record[nc][
+                nd
+            ]["fwd_frame0_mask"][1:]
+            master_data_record[nc][nd]["fwd_frame1_mask"][:-1] = master_data_record[nc][
+                nd
+            ]["fwd_frame1_mask"][1:]
+            master_data_record[nc][nd]["inv_frame0_mask"][:-1] = master_data_record[nc][
+                nd
+            ]["inv_frame0_mask"][1:]
+            master_data_record[nc][nd]["inv_frame1_mask"][:-1] = master_data_record[nc][
+                nd
+            ]["inv_frame1_mask"][1:]
 
 
 from collections import defaultdict
@@ -282,6 +298,10 @@ def plot_octet_emulator_output(
                 "data": copy.copy([0]),
                 "waittrig": copy.copy([0]),
                 "enablemask": copy.copy([0]),
+                "fwd_frame0_mask": copy.copy([0]),
+                "inv_frame0_mask": copy.copy([0]),
+                "fwd_frame1_mask": copy.copy([0]),
+                "inv_frame1_mask": copy.copy([0]),
             }
             for d in range(8)
         }
@@ -298,21 +318,14 @@ def plot_octet_emulator_output(
     )
     loop.close()
 
-    # if compare_lut_to_bypass:
-    # mdr2 = tree()
-    # retlist2 = chunkDataDirect(ret2, chunksize=1)
-    # for i,pd in enumerate(retlist2):
-    # print(f'pd {i}')
-    # DecodeWord(pd, mdr2)
-    # print(mdr2)
-
     print("finished")
     print("Final LUT contents as lists, ordered by channel:")
     print("Gate LUTs:  ", GLUT)
     print("MMAP LUTs:  ", SLUT)
     print("Pulse LUTs: ", PLUT)
-    # print(mdr)
+
     mdr = master_data_record
+    apply_frame_forwarding_and_inversion(mdr, num_channels=num_plots)
     print("ret len is ", len(ret))
 
     plot_loc_dict = {
@@ -374,3 +387,58 @@ def plot_octet_emulator_output(
             bbox_transform=axl[0][-1].transAxes,
         )
     plt.show()
+
+
+def apply_frame_forwarding_and_inversion(mdr, num_channels=8):
+    for chnm in range(num_channels):
+        xd = [None, None]
+        yd = [None, None]
+        fmask = [None, None]
+        invmask = [None, None]
+        for i, pind in enumerate([FRMROT0INT, FRMROT1INT]):
+            xd[i] = np.array(mdr[chnm][pind]["time"])
+            yd[i] = np.array(mdr[chnm][pind]["data"])
+            fmask[i] = np.array(mdr[chnm][pind][f"fwd_frame{i}_mask"])
+            invmask[i] = np.array(mdr[chnm][pind][f"inv_frame{i}_mask"])
+        x0_fin, x1_fin, y0_fin, y1_fin = [], [], [], []
+        all_xs = sorted(set(xd[0]) | set(xd[1]))
+        for x in all_xs:
+            fwd0m, fwd1m = 0, 0
+            if x in xd[0]:
+                fwd0m = fmask[0][xd[0] == x][-1]
+            if x in xd[1]:
+                fwd1m = fmask[1][xd[1] == x][-1]
+            if 0b01 & fwd0m:
+                if 0b01 & invmask[0][xd[0] == x][-1]:
+                    y0_fin.append(-yd[0][xd[0] == x][-1])
+                else:
+                    y0_fin.append(yd[0][xd[0] == x][-1])
+                x0_fin.append(x)
+            elif 0b01 & fwd1m:
+                if 0b01 & invmask[1][xd[1] == x][0]:
+                    y0_fin.append(-yd[1][xd[1] == x][-1])
+                else:
+                    y0_fin.append(yd[1][xd[1] == x][-1])
+                x0_fin.append(x)
+            else:
+                y0_fin.append(0)
+                x0_fin.append(x)
+            if 0b10 & fwd0m:
+                if 0b10 & invmask[0][xd[0] == x][-1]:
+                    y1_fin.append(-yd[0][xd[0] == x][-1])
+                else:
+                    y1_fin.append(yd[0][xd[0] == x][-1])
+                x1_fin.append(x)
+            elif 0b10 & fwd1m:
+                if 0b10 & invmask[1][xd[1] == x][-1]:
+                    y1_fin.append(-yd[1][xd[1] == x][-1])
+                else:
+                    y1_fin.append(yd[1][xd[1] == x][-1])
+                x1_fin.append(x)
+            else:
+                y1_fin.append(0)
+                x1_fin.append(x)
+        mdr[chnm][FRMROT0INT]["time"] = np.array(x0_fin)
+        mdr[chnm][FRMROT1INT]["time"] = np.array(x1_fin)
+        mdr[chnm][FRMROT0INT]["data"] = np.array(y0_fin)
+        mdr[chnm][FRMROT1INT]["data"] = np.array(y1_fin)
