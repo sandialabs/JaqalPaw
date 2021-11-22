@@ -261,20 +261,20 @@ def print_metadata_output(input_bytes):
                 print(deltastr)
 
 
-def plot_octet_emulator_output(ret, compare_lut_to_bypass=False, num_plots=8):
+def plot_octet_emulator_output(
+    ret, compare_lut_to_bypass=False, num_plots=8, legend=True, real_time=False
+):
     from jaqalpaw.emulator.byte_decoding import (
         decode_word,
         GLUT,
         SLUT,
         PLUT,
         mod_type_dict,
-    )  # , tree
+    )
 
-    # from hardware_elements.byte_decoding import decode_word, GLUT, SLUT, PLUT, mod_type_dict, tree
     import matplotlib.pyplot as plt
     import matplotlib.ticker as tic
 
-    # import numpy as np
     master_data_record = {
         c: {
             d: {
@@ -326,27 +326,28 @@ def plot_octet_emulator_output(ret, compare_lut_to_bypass=False, num_plots=8):
         7: [1, 3],
     }
 
-    time_scale = 1  # 1e6
-    f1, axl = plt.subplots(4, 2, sharex=True)
+    time_scale = CLKPERIOD * 1e6 if real_time else 1
+    f1, axl = plt.subplots(4, 2, sharex=True, figsize=(7.4, 4.8))
     ls_list = 2 * [
         {"linestyle": "-", "where": "post"},
         {"linestyle": "-.", "where": "post"},
         {"linestyle": "--", "where": "post"},
         {"linestyle": ":", "where": "post"},
     ]
+    pltref = []
     for chnm in range(num_plots):
         for i in range(4):
             for j in range(2):
                 jp, ip = plot_loc_dict[i + j * 4]
                 axl[ip][jp].set_ylabel(mod_type_dict[i + j * 4]["name"])
-                axl[ip][jp].step(
+                (pr,) = axl[ip][jp].step(
                     time_scale * np.array(mdr[chnm][i + j * 4]["time"]),
                     mdr[chnm][i + j * 4]["data"],
-                    # where='post',
                     **ls_list[chnm],
+                    label=f"Channel {chnm}",
                 )
-                # if compare_lut_to_bypass:
-                # axl[ip][jp].step(time_scale*np.array(mdr2[chnm][i+j*4]['time']), mdr2[chnm][i+j*4]['data'], where='post')
+                if i == 0 and j == 0:
+                    pltref.append(copy.copy(pr))
                 plt.subplots_adjust(hspace=0.001, wspace=0.001)
                 temp = tic.MaxNLocator(4)
                 axl[ip][jp].yaxis.set_major_locator(temp)
@@ -354,7 +355,22 @@ def plot_octet_emulator_output(ret, compare_lut_to_bypass=False, num_plots=8):
                     axl[ip][jp].yaxis.set_label_position("right")
                     axl[ip][jp].yaxis.tick_right()
                 if ip == 3:
-                    axl[ip][jp].set_xlabel("Clock Cycles")
-                # if ip+jp == 0:
-                #     axl[ip][jp].set_title(f'Channel {chnm}')
+                    axl[ip][jp].set_xlabel(
+                        "Time ($\mu$s)" if real_time else "Clock Cycles"
+                    )
+
+    if legend:
+        plt.subplots_adjust(bottom=0.1, right=0.7, top=0.9)
+        axbox = (
+            axl[0][-1]
+            .get_tightbbox(f1.canvas.get_renderer())
+            .transformed(axl[0][-1].transAxes.inverted())
+        )
+        axl[0][-1].legend(
+            pltref,
+            [f"Channel {cn}" for cn in range(num_plots)],
+            loc="upper left",
+            bbox_to_anchor=[axbox.x1, axbox.y1],
+            bbox_transform=axl[0][-1].transAxes,
+        )
     plt.show()
