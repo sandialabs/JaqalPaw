@@ -142,15 +142,25 @@ SLUT_BYTECNT = PACKING_LIMIT_LSB // (SLUTW + PLUTW)
 GLUT_BYTECNT = PACKING_LIMIT_LSB // (GPRGW + 2 * SLUTW)
 GSEQ_BYTECNT = PACKING_LIMIT_LSB // GLUTW
 
+# Integer encoded representation of modulation type
+FRQMOD0INT = 0
+AMPMOD0INT = 1
+PHSMOD0INT = 2
+FRQMOD1INT = 3
+AMPMOD1INT = 4
+PHSMOD1INT = 5
+FRMROT0INT = 6
+FRMROT1INT = 7
+
 # One-hot encoded representation of modulation type
-FRQMOD0 = 0b00000001
-AMPMOD0 = 0b00000010
-PHSMOD0 = 0b00000100
-FRQMOD1 = 0b00001000
-AMPMOD1 = 0b00010000
-PHSMOD1 = 0b00100000
-FRMROT0 = 0b01000000
-FRMROT1 = 0b10000000
+FRQMOD0 = 1 << FRQMOD0INT
+AMPMOD0 = 1 << AMPMOD0INT
+PHSMOD0 = 1 << PHSMOD0INT
+FRQMOD1 = 1 << FRQMOD1INT
+AMPMOD1 = 1 << AMPMOD1INT
+PHSMOD1 = 1 << PHSMOD1INT
+FRMROT0 = 1 << FRMROT0INT
+FRMROT1 = 1 << FRMROT1INT
 
 # Set the minimum clock cycles for a pulse to help avoid underflows. This time
 # is determined by state machine transitions for loading another gate, but does
