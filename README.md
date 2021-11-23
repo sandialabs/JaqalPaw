@@ -1,3 +1,5 @@
+For more extensive information on JaqalPaw usage and parameter descriptions, see the official [JaqalPaw manual](https://www.sandia.gov/quantum/Projects/Uploads/JaqalPaw__A_Guide_to_Defining_Pulses_and_Waveforms_for_Jaqal.pdf), which can be found at [qscout.sandia.gov](https://qscout.sandia.gov).
+
 # Running The Emulator
 
 For the initial version, simply run the top-level file `main.py`. This method bypasses some of the preprocessor steps for identifying the target gate pulse definition class, so this must be inserted manually and an instance of the class is directly imported and passed in via the `pulse_definition` keyword argument.
@@ -24,6 +26,10 @@ PulseData(channel,
           sync_mask=0,
           apply_at_end_mask=0,
           rst_frame_mask=0,
+          fwd_frame0_mask=0,
+          fwd_frame1_mask=0,
+          inv_frame0_mask=0,
+          inv_frame1_mask=0,
           waittrig=False
          )
 ```
@@ -40,6 +46,10 @@ PulseData(channel,
 | `sync_mask`                                          | `int`                                          | Applies a global synchronization at the beginning of the pulse so that the phase is aligned to the global clock for the given frequency. |
 | `apply_at_end_mask`                                  | `int`                                          | Applies `framerot` parameters with the _next_ pulse. This is to account for AC Stark shifts resulting from compensated pulses that take compensate for the frequency shift during the pulse. |
 | `rst_frame_mask`                                     | `int`                                          | Resets the accumulated phase from previous `framerot` calls to 0 |
+| `fwd_frame0_mask`                                    | `int`                                          | Forwards accumulated phase from `framerot0` to tones 0 and/or 1 |
+| `fwd_frame1_mask`                                    | `int`                                          | Forwards accumulated phase from `framerot1` to tones 0 and/or 1 (`fwd_frame0_mask` takes precedence if both frames are forwarded to the same tone) |
+| `inv_frame0_mask`                                    | `int`                                          | Inverts forwarded `framerot0` data on tones 0 and/or 1, only applies if corresponding bits are set on `fwd_frame0_mask` |
+| `inv_frame1_mask`                                    | `int`                                          | Inverts forwarded `framerot1` data on tones 0 and/or 1, only applies if corresponding bits are set on `fwd_frame1_mask` |
 | `waittrig`                                           | `bool`                                         | waits for external trigger (hardware or software) before applying pulse |
 
 # Gate Pulse Definition File
@@ -60,9 +70,9 @@ Class level definitions with type annotations are exposed to the main experiment
 
 ```python
 class GatePulses:
-    pulse_duration : float = 2e-6
-    global_freq : float = 200.0
-    individual_freq : float = 242.0
+    pulse_duration : float = 2e-6  # seconds
+    global_freq : float = 200e6  # Hz
+    individual_freq : float = 242e6  # Hz
 ```
 
 Gates are defined as member functions and have `gate_` prefix before the name of the gate. In other words, a gate named `R` in Jaqal will be defined as `gate_R` in the gate definition class. Helper functions referenced by the class must be member functions of the class and don't need the `gate_` prefix. 
@@ -71,9 +81,9 @@ The input argument signature of a gate corresponds to the arguments that can be 
 
 ```python
 class GatePulses:
-    pulse_duration : float = 2e-6
-    global_freq : float = 200.0
-    individual_freq : float = 242.0
+    pulse_duration : float = 2e-6  # seconds
+    global_freq : float = 200e6  # Hz
+    individual_freq : float = 242  # Hz
         
     def gate_R(self, channel, theta=0):
     	...
@@ -100,9 +110,9 @@ Each gate definition function must return a list of `PulseData` objects. Objects
 global_beam_channel = 0
 
 class GatePulses:
-    pulse_duration : float = 2e-6
-    global_freq : float = 200.0
-    individual_freq : float = 242.0
+    pulse_duration : float = 2e-6  # seconds
+    global_freq : float = 200e6  # Hz
+    individual_freq : float = 242e6  # Hz
         
     def gate_H(self, channel, theta):
         "Example counter-propagating Hadamard gate"
