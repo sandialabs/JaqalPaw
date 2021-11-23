@@ -390,6 +390,15 @@ def plot_octet_emulator_output(
 
 
 def apply_frame_forwarding_and_inversion(mdr, num_channels=8):
+    """Frame data needs to be forwarded to different tones with an optional
+    sign inversion. Because the frame data has a different array for update
+    times to reduce overhead on plotting, as well as the fact that the data
+    is generated independently in separate spline engine queues, the data needs
+    to be post-processed to reflect the correct outputs. This function replaces
+    the input data with the correct forwarding/inversion information based on
+    the same precedence rules used in firmware. Namely, trying to forward data
+    from both frames to the same tones is allowed by the hardware, but the data
+    from framerot0 will take precedence."""
     for chnm in range(num_channels):
         xd = [None, None]
         yd = [None, None]
