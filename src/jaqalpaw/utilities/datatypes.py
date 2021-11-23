@@ -14,15 +14,23 @@ def to_real_time(dur, clkfreq):
     return dur
 
 
-class Spline(tuple):
+class ModulationBaseClass(tuple):
+    """ModulationBaseClass is used to distinguish hashes for tuples
+    containing parameters for different modulation types"""
+
+    def __hash__(self):
+        return hash((type(self), super().__hash__()))
+
+
+class Spline(ModulationBaseClass):
     pass
 
 
-class Discrete(tuple):
+class Discrete(ModulationBaseClass):
     pass
 
 
-class Mixed(tuple):
+class Mixed(ModulationBaseClass):
     pass
 
 
