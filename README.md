@@ -22,8 +22,8 @@ PulseData(channel,
           enable_mask=0,
           fb_enable_mask=0,
           sync_mask=0,
-          apply_at_eof_mask=0,
-          clr_frame_rot_mask=0,
+          apply_at_end_mask=0,
+          rst_frame_mask=0,
           waittrig=False
          )
 ```
@@ -36,10 +36,10 @@ PulseData(channel,
 | `framerot0`, `framerot1`                             | `float`, `tuple`, `list`, `Discrete`, `Spline` | z rotation applied to tones 0 and 1. Frame rotation was used as a keyword argument since the rotation in z is specific to the experimental hardware and nomenclature. This is effectively identical to changing the phase, except that the value applied persists and is taken to be the new zero value for subsequent pulses. |
 | `xxxx_mask`                                          | `int`                                          | All mask types are treated as two-bit bitmasks, where tone0 and tone0 are controlled by the least and most significant bits respectively. In other words, allowed values are 0-3, where 0b00 has no effect, 0b01 affects tone 0, 0b10 affects tone 1 and 0b11 affects both tones. |
 | `enable_mask`                                        | `int`                                          | Toggles the static value of the output enable. When the output enable is disabled, or zero, the resulting output of the tone is ignored and forced to zero. |
-| `fb_enable_mask`                                       | `int`                                          | Toggles the static value of the frequency feedback  enable.  |
+| `fb_enable_mask`                                     | `int`                                          | Toggles the static value of the frequency feedback  enable.  |
 | `sync_mask`                                          | `int`                                          | Applies a global synchronization at the beginning of the pulse so that the phase is aligned to the global clock for the given frequency. |
-| `apply_at_eof_mask`                                  | `int`                                          | Applies `framerot` parameters with the _next_ pulse. This is to account for AC Stark shifts resulting from compensated pulses that take compensate for the frequency shift during the pulse. |
-| `clr_frame_rot_mask`                                 | `int`                                          | Resets the accumulated phase from previous `framerot` calls to 0 |
+| `apply_at_end_mask`                                  | `int`                                          | Applies `framerot` parameters with the _next_ pulse. This is to account for AC Stark shifts resulting from compensated pulses that take compensate for the frequency shift during the pulse. |
+| `rst_frame_mask`                                     | `int`                                          | Resets the accumulated phase from previous `framerot` calls to 0 |
 | `waittrig`                                           | `bool`                                         | waits for external trigger (hardware or software) before applying pulse |
 
 # Gate Pulse Definition File
@@ -50,7 +50,7 @@ Gates are defined at the pulse level in a python format that is referenced by th
 from gate_pulse_file_name.GatePulseClassName usepulses *
 ```
 
-with optional relative  imports from subdirectories such as
+with optional relative imports from subdirectories such as
 
 ```
 from sub_directory_1.sub_directory_2.gate_pulse_file_name.GatePulseClassName usepulses *
