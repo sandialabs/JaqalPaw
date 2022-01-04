@@ -369,7 +369,7 @@ def plot_octet_emulator_output(
                     axl[ip][jp].yaxis.tick_right()
                 if ip == 3:
                     axl[ip][jp].set_xlabel(
-                        "Time ($\mu$s)" if real_time else "Clock Cycles"
+                        r"Time ($\mu$s)" if real_time else "Clock Cycles"
                     )
 
     if legend:
