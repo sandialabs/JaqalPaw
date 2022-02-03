@@ -1,4 +1,4 @@
-from pulse_definitions.StandardGatePulses usepulses *
+from qscout.v1.std usepulses *
 
 register q[8]
 

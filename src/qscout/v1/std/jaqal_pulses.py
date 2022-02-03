@@ -14,7 +14,7 @@ Time = NewType("Time", float)  # seconds
 RabiCalibration = NewType("RabiCalibration", float)  # radians/(seconds*Arb**2)
 
 
-class StandardGatePulses:
+class GatePulses:
 
     aom_center_frequency: Frequency = 215e6
     adjusted_carrier_splitting: Frequency = 28.42e6
