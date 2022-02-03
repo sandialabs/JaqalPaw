@@ -71,7 +71,7 @@ async def firmware_emulator(
         num_channels=num_channels,
         spline_fifo_depth=16,  # 256,
         gate_seq_fifo_depth=32,  # 512,
-        dma_depth=2 ** 20,
+        dma_depth=2**20,
     )
 
     # generate fifo tasks

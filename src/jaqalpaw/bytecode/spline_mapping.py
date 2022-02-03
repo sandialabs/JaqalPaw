@@ -17,17 +17,17 @@ def cs_mapper_int(interp_table, nsteps=409625, shift_len=16):
         new_coeffs[2, i] = float(
             (
                 interp_table[2, i] * tstep
-                + interp_table[1, i] * tstep ** 2
-                + interp_table[0, i] * tstep ** 3
+                + interp_table[1, i] * tstep**2
+                + interp_table[0, i] * tstep**3
             )
             * (1 << shift_len)
         )
         new_coeffs[1, i] = float(
-            (2 * interp_table[1, i] * tstep ** 2 + 6 * interp_table[0, i] * tstep ** 3)
+            (2 * interp_table[1, i] * tstep**2 + 6 * interp_table[0, i] * tstep**3)
             * (1 << (shift_len * 2))
         )
         new_coeffs[0, i] = float(
-            (6 * interp_table[0, i] * tstep ** 3) * (1 << (shift_len * 3))
+            (6 * interp_table[0, i] * tstep**3) * (1 << (shift_len * 3))
         )
     return new_coeffs
 
@@ -53,13 +53,13 @@ def cs_mapper_int_auto_shift(interp_table, nsteps, apply_phase_mask=False):
             new_coeffs[3, i] = int(interp_table[3, i])
         new_coeffs[2, i] = (
             interp_table[2, i] * tstep
-            + interp_table[1, i] * tstep ** 2
-            + interp_table[0, i] * tstep ** 3
+            + interp_table[1, i] * tstep**2
+            + interp_table[0, i] * tstep**3
         )
         new_coeffs[1, i] = (
-            2 * interp_table[1, i] * tstep ** 2 + 6 * interp_table[0, i] * tstep ** 3
+            2 * interp_table[1, i] * tstep**2 + 6 * interp_table[0, i] * tstep**3
         )
-        new_coeffs[0, i] = 6 * interp_table[0, i] * tstep ** 3
+        new_coeffs[0, i] = 6 * interp_table[0, i] * tstep**3
 
         # coefficients have been mapped for PDQ interpolation, but the
         # higher order coefficients may be resolution limited. The data
