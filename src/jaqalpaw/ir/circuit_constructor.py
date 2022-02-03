@@ -1,14 +1,12 @@
-from pathlib import Path
-
 from jaqalpaq.parser import parse_jaqal_string, parse_jaqal_file
 from jaqalpaq.parser.parser import parse_jaqal_string_header, parse_jaqal_file_header
 from jaqalpaq.core.algorithm import expand_macros, fill_in_let
-import runpy
 
 from .circuit_constructor_visitor import convert_circuit_to_gateslices
 from .pulse_data import PulseData
 from .ast_utilities import get_let_constants
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
+from jaqalpaw._import import get_jaqal_pulses
 
 # ######################################################## #
 # ------ Convert jaqal AST to GateSlice IR Layer --------- #
@@ -53,20 +51,10 @@ class CircuitConstructor:
             raise CircuitCompilerException("No gate pulse file specified!")
         if self.file is None and self.pulse_definition:
             return self.pulse_definition
-        gp_path = Path(self.file).parent
-        gp_name = self.gate_pulse_info[
-            -1
-        ]  # jaqal token returns a list of imports (split at '.'), last one is class name
-        for p in self.gate_pulse_info[:-1]:
-            gp_path /= p  # construct path object from usepulses call
-        gp_path = gp_path.with_suffix(".py")
-        if gp_path.exists():
-            self.gate_pulse_file_path = str(gp_path)
-        else:
-            raise CircuitCompilerException(f"Can't find path {str(gp_path)}")
-        pd_import = runpy.run_path(gp_path, init_globals={"PulseData": PulseData})
-        self.pulse_definition = pd_import[gp_name]()
-        return pd_import[gp_name]
+        self.pulse_definition = get_jaqal_pulses(
+            ".".join(self.gate_pulse_info), self.file
+        )
+        return self.pulse_definition
 
     def generate_ast(self, file=None, override_dict=None):
         if self.base_circuit is None:
