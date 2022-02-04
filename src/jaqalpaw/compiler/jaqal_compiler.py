@@ -678,13 +678,21 @@ class CircuitCompiler(CircuitConstructor):
     def get_prepare_all_indices(self):
         self.prepare_all_hashes = dict()
         self.prepare_all_gids = dict()
-        if not hasattr(self.pulse_definition, "gate_" + self.initialize_gate_name):
-            raise CircuitCompilerException(
+        prepare_all_prefix = "gate_"
+        if not hasattr(self.pulse_definition, prepare_all_prefix + self.initialize_gate_name):
+            prepare_all_prefix = "macro_"
+            if not hasattr(self.pulse_definition, prepare_all_prefix + self.initialize_gate_name):
+                raise CircuitCompilerException(
                 f"Pulse definition has no gate named gate_{self.initialize_gate_name}"
             )
-        gate_data = getattr(self.pulse_definition, "gate_" + self.initialize_gate_name)(
-            self.channel_num
-        )
+        if prepare_all_prefix == "macro_":
+            gate_data = getattr(self.pulse_definition, prepare_all_prefix + self.initialize_gate_name)(
+                self.channel_num
+            )[0]
+        else:
+            gate_data = getattr(self.pulse_definition, prepare_all_prefix + self.initialize_gate_name)(
+                self.channel_num
+            )
         gslice = populate_gate_slice(gate_data, self.channel_num)
         for ch, gsdata in gslice.channel_data.items():
             prep_hash = hash(tuple(gsdata))
@@ -709,6 +717,17 @@ class CircuitCompiler(CircuitConstructor):
                 self.prepare_all_gids[ch], gidlist, ind
             )
             partial_GSEQ_bin[ch] = gate_sequence_bytes(partial_gs_ids[ch], ch)
+        return partial_GSEQ_bin
+
+    def generate_gate_sequence_subcircuits(self):
+        self.get_prepare_all_indices()
+        partial_gs_ids = dict()
+        partial_GSEQ_bin = dict()
+        for ch, gidlist in self.gate_sequence_ids.items():
+            partial_gs_ids[ch] = get_subcircuits(
+                self.prepare_all_gids[ch], gidlist
+            )
+            partial_GSEQ_bin[ch] = list(map(lambda x: gate_sequence_bytes(x,ch), partial_gs_ids[ch]))
         return partial_GSEQ_bin
 
     def partial_sequence_bytecode(self, channel_mask=None, starting_index=0):
@@ -760,6 +779,77 @@ class CircuitCompiler(CircuitConstructor):
             sequence_data.append(board_sequence_data)
         return programming_data, sequence_data
 
+    def subcircuit_bytecode(self, channel_mask=None):
+        """Return the bytecode for compiling and running a gate sequence.
+        The data is returned in two blocks, programming data and sequence data.
+        Each block contains a list of lists, where the structure of each block is
+
+               [[board0 byte list], [board1 byte list], ...]
+
+        for use with multiple boards, and the byte lists are a list of 32 byte (256 bit)
+        words that can be concatenated and sent to the device. Sequence data is sent
+        separately in case the data needs to be sent with multiple repetitions.
+
+        The channel_mask is an N bit mask that is used to selectively filter out
+        data by channel, where 0 prevents the data from being sent and the LSB
+        corresponds to channel 0. If channel_mask is None, data is supplied for
+        all channels up to self.channel_num"""
+        if not self.compiled:
+            self.compile()
+        if channel_mask is None:
+            channel_mask = (1 << self.channel_num) - 1
+        self.final_byte_dict = defaultdict(list)
+        self.programming_data = list()
+        self.sequence_data = list()
+        subcircuit_GSEQ_bin = self.generate_gate_sequence_subcircuits()
+        if self.channel_num > 8:
+            for bbind in range(0, self.channel_num, 8):
+                board_programming_data = list()
+                board_sequence_data = list()
+                for bindata in zip_longest(
+                        self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                        for ch in range(bbind, min(bbind + 8, self.channel_num))
+                        if (1 << ch) & channel_mask
+                ):
+                    board_programming_data.extend(bindata[0])
+                for subcircuit_index in range(len(subcircuit_GSEQ_bin[0])):
+                    subcirc_index_board_data = []
+                    for bindata in zip_longest(
+                            *list(
+                                subcircuit_GSEQ_bin[ch][subcircuit_index]
+                                for ch in range(bbind, min(bbind + 8, self.channel_num))
+                                if (1 << ch) & channel_mask
+                            )
+                    ):
+                        if bindata:
+                            subcirc_index_board_data.extend(bindata)
+                    board_sequence_data.append(subcirc_index_board_data)
+                self.programming_data.append(board_programming_data)
+                self.sequence_data.append(board_sequence_data)
+        else:
+            board_programming_data = list()
+            board_sequence_data = list()
+            for bindata in zip_longest(
+                    self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                    for ch in range(self.channel_num)
+                    if (1 << ch) & channel_mask
+            ):
+                board_programming_data.extend(bindata[0])
+            for subcircuit_index in range(len(subcircuit_GSEQ_bin[0])):
+                subcirc_index_board_data = []
+                for bindata in zip_longest(
+                        *list(
+                            subcircuit_GSEQ_bin[ch][subcircuit_index]
+                            for ch in range(self.channel_num)
+                            if (1 << ch) & channel_mask
+                        )
+                ):
+                    if bindata:
+                        subcirc_index_board_data.extend(bindata)
+                board_sequence_data.append(subcirc_index_board_data)
+            self.programming_data.append(board_programming_data)
+            self.sequence_data.append(board_sequence_data)
+        return self.programming_data, self.sequence_data
 
 # ######################################################## #
 # ------- Temporary jaqal Preprocessing Functions -------- #
@@ -823,3 +913,13 @@ def get_tail_from_index(elem, gidlist, ind):
 
     gid_ind = list(compress(count(), map(lambda x: x == elem, gidlist)))[ind]
     return gidlist[gid_ind:]
+
+
+def get_subcircuits(elem, gidlist):
+    from itertools import compress, count, zip_longest
+    gid_start_indices = list(compress(count(), map(lambda x: x == elem, gidlist)))
+    gid_end_indices = gid_start_indices[1:]
+    subcircuit_gids = []
+    for (gstart, gend) in zip_longest(gid_start_indices, gid_end_indices):
+        subcircuit_gids.append(gidlist[gstart:gend])
+    return subcircuit_gids
