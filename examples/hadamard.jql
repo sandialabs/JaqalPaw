@@ -3,7 +3,7 @@ from qscout.v1.std usepulses *
 register q[8]
 
 let pi 3.14159265359
-let pi2  1.57079632679
+let pi2 1.57079632679
 let pi4 0.78539816339
 let mpi2 -1.57079632679
 
@@ -15,9 +15,9 @@ macro hadamard target { // A Hadamard gate can be implemented as
 
 macro cnot control target {  // CNOT implementation from Maslov (2017)
 	R control pi2 pi2        //
-	MS control target 0 pi4
+	MS control target 0 pi2
 	<R control 0 mpi2 | R target 0 mpi2>  // we can perform these in parallel
-	R control pi2 pi2
+	R control pi2 mpi2
 }
 
 prepare_all         // Prepare each qubit in the computational basis.
