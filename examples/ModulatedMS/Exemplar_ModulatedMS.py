@@ -15,12 +15,7 @@ from scipy.special import erf as _erf
 import os
 import sys
 
-# Either of these import methods work at the moment, but local doesn't work well.
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from QSCOUTBuiltins import QSCOUTBuiltins, GLOBAL_BEAM
-
-# Import QSCOUTBuiltins. Note: this is under development, exact syntax subject to change.
-# from jaqalpaw.utilities.QSCOUTBuiltins import QSCOUTBuiltins, GLOBAL_BEAM
+from qscout.v1.QSCOUTBuiltins import QSCOUTBuiltins, GLOBAL_BEAM
 
 
 class HelperFunctions:
