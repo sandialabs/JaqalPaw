@@ -1,0 +1,18 @@
+// Import JaqalPaw Code.
+from Exemplar_MSGateFrameRotations_PulseDefinitions.MSExemplar usepulses *
+
+// Declare variables.
+let ms_loops 2
+let target1 2
+let target2 3
+
+register q[8]
+
+// Prepare = Sideband cool, then Pump to F=0
+prepare_all 
+
+loop ms_loops {
+	MS q[target1] q[target2]
+}
+
+measure_all
