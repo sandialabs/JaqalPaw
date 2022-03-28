@@ -1,0 +1,21 @@
+// Import JaqalPaw Code.
+from Exemplar_ModulatedMS_PulseDefinitions.ModulatedMSExemplar usepulses *
+
+// Declare variables.
+let target1 2
+let target2 3
+let singleion 0
+let global_duration -1
+let ms_loops 1
+
+register q[8]
+
+// Prepare = Sideband cool, then Pump to F=0
+prepare_all 
+
+
+loop ms_loops {
+	Mod_MS q[target1] q[target2] singleion global_duration
+}
+
+measure_all
