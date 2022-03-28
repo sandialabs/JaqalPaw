@@ -1,0 +1,10 @@
+from qscout.v1.sk1 usepulses *
+
+register q[8]
+
+let pi 3.141592653589793
+
+
+prepare_all
+R q[1] pi pi
+measure_all
