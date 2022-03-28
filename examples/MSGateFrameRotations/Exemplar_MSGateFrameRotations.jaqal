@@ -1,5 +1,5 @@
 // Import JaqalPaw Code.
-from Exemplar_MSGateFrameRotations_PulseDefinitions.MSExemplar usepulses *
+from .Exemplar_MSGateFrameRotations usepulses *
 
 // Declare variables.
 let ms_loops 2
