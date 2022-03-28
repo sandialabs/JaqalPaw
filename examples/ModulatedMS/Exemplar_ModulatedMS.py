@@ -225,6 +225,10 @@ class ModulatedMSExemplar(QSCOUTBuiltins, HelperFunctions):
         return listtoReturn
 
 
+class jaqal_pulses:
+    GatePulses = ModulatedMSExemplar
+
+
 """ Copy of Exemplar_ModulatedMS_Config.txt below :
 # Example configuration file that reproduces a Gaussian FM gate from manual input.
 #   (Assumes nominal rabi rate of 100kHz and sideband frequency of 2.1 MHz.)
