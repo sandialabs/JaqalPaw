@@ -37,7 +37,11 @@ class Mixed(ModulationBaseClass):
 class Loop(list):
     def __init__(self, *args, repeats=1, **kwargs):
         super().__init__(*args, **kwargs)
-        self.repeats = repeats
+        self._repeats = repeats
+
+    @property
+    def repeats(self):
+        return int(self._repeats)
 
 
 class Branch(list):
