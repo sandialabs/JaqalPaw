@@ -1,5 +1,5 @@
 // Import JaqalPaw Code.
-from Exemplar_ModulatedMS_PulseDefinitions.ModulatedMSExemplar usepulses *
+from .Exemplar_ModulatedMS usepulses *
 
 // Declare variables.
 let target1 2
