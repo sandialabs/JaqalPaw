@@ -1,4 +1,4 @@
-from qscout.v1.std usepulses *
+from .ShamQSCOUTPulses usepulses *
 
 register q[8]
 
@@ -9,4 +9,3 @@ prepare_all
 R q[1] pi pi
 MS q[2] q[3] pi pi
 measure_all
-

@@ -240,3 +240,7 @@ class GatePulses:
 
     def gate_Sxx(self, qubit1, qubit2):
         return self.gate_MS(qubit1, qubit2, math.pi / 2, 0)
+
+
+class jaqal_pulses:
+    GatePulses = GatePulses

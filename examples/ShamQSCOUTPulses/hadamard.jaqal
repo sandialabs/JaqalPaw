@@ -1,4 +1,4 @@
-from qscout.v1.std usepulses *
+from .ShamQSCOUTPulses usepulses *
 
 register q[8]
 
