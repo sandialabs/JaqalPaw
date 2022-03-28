@@ -267,7 +267,7 @@ class UtilityPulses:
         return [
             PulseData(
                 GLOBAL_BEAM,
-                duration=duration,
+                dur=duration,
                 freq0=global_freq,
                 amp0=self.amp0_counterprop,
                 phase0=phase,
@@ -275,7 +275,7 @@ class UtilityPulses:
             ),
             PulseData(
                 channel,
-                duration=duration,
+                dur=duration,
                 freq1=discretize_frequency(self.ia_center_frequency),
                 amp1=self.amp1_counterprop_list[channel],
                 phase1=0,
