@@ -203,7 +203,7 @@ class ModulatedMSExemplar(QSCOUTBuiltins, HelperFunctions):
                 amp0=tuple(self.MS_blue_amp_list[channel1] * amp_scale),
                 amp1=tuple(self.MS_red_amp_list[channel1] * amp_scale),
                 framerot0=framerot_input,
-                apply_at_eof_mask=framerot_app,
+                apply_at_end_mask=framerot_app,
                 phase0=0,
                 phase1=0,
                 sync_mask=0b11,
@@ -222,7 +222,7 @@ class ModulatedMSExemplar(QSCOUTBuiltins, HelperFunctions):
                     phase0=0,
                     phase1=0,
                     framerot0=framerot_input,
-                    apply_at_eof_mask=framerot_app,
+                    apply_at_end_mask=framerot_app,
                     sync_mask=0b11,
                     fb_enable_mask=0b00,
                 )
