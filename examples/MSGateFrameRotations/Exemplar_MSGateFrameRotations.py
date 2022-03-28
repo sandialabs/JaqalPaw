@@ -142,3 +142,7 @@ class MSExemplar(QSCOUTBuiltins, HelperFunctions):
             ),
         ]
         return listtoReturn
+
+
+class jaqal_pulses:
+    GatePulses = MSExemplar
