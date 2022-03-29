@@ -9,7 +9,7 @@ let target2 3
 register q[8]
 
 // Prepare = Sideband cool, then Pump to F=0
-prepare_all 
+prepare_all
 
 loop ms_loops {
 	MS q[target1] q[target2]
