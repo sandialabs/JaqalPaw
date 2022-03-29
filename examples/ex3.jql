@@ -1,0 +1,6 @@
+from .ex3 usepulses *
+register q[3]
+
+loop 4 {
+	G q[2]
+}
