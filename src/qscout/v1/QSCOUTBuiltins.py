@@ -330,7 +330,7 @@ class DynamicalDecouplingGates:
         framerot_input = self.SK1_framerot / (self.pulse_duration + duration_4pi)
         lower_freq = discretize_frequency(
             self.ia_center_frequency
-        ) - discretize_frequency(adjusted_carrier_splitting)
+        ) - discretize_frequency(self.adjusted_carrier_splitting)
         upper_freq = discretize_frequency(self.ia_center_frequency)
         return [
             PulseData(
@@ -388,7 +388,7 @@ class DynamicalDecouplingGates:
         framerot_input = self.SK1_framerot / (duration_pi2 + duration_4pi)
         lower_freq = discretize_frequency(
             self.ia_center_frequency
-        ) - discretize_frequency(adjusted_carrier_splitting)
+        ) - discretize_frequency(self.adjusted_carrier_splitting)
         upper_freq = discretize_frequency(self.ia_center_frequency)
         return [
             PulseData(
