@@ -259,28 +259,57 @@ class UtilityPulses:
     def gate_Wait(self, channel=0, duration_scale=1):
         return [PulseData(channel, self.wait_time, freq0=0, freq1=0, enable_mask=0)]
 
-    def gate_CounterProp(self, channel, angle=np.pi, phase=0):
-        global_freq = discretize_frequency(
-            self.ia_center_frequency
-        ) - discretize_frequency(self.adjusted_carrier_splitting)
+    def gate_RCounter(self, channel, angle=np.pi, phase=0, sb_freq=0):
         duration = (angle / np.pi) * self.counter_resonant_pi_time
+        global_beam_frequency = (
+            discretize_frequency(self.ia_center_frequency)
+            - discretize_frequency(self.adjusted_carrier_splitting)
+            - discretize_frequency(sb_freq)
+        )
         return [
             PulseData(
                 GLOBAL_BEAM,
-                dur=duration,
-                freq0=global_freq,
+                duration,
+                freq0=global_beam_frequency,
                 amp0=self.amp0_counterprop,
-                phase0=phase,
-                sync_mask=both_tones,
+                phase0=0,
+                sync_mask=tone0,
+                fb_enable_mask=tone1
+                if global_beam_frequency < self.ia_center_frequency
+                else tone0,
             ),
             PulseData(
                 channel,
-                dur=duration,
+                duration,
+                freq0=0,
                 freq1=discretize_frequency(self.ia_center_frequency),
-                amp1=self.amp1_counterprop_list[channel],
-                phase1=0,
+                amp0=0,
+                amp1=self.amp1_counterprop_list[int(channel)],
+                phase1=phase,
                 sync_mask=both_tones,
+                fb_enable_mask=tone0
+                if global_beam_frequency < self.ia_center_frequency
+                else tone1,
             ),
+        ]
+
+    def gate_RCoIA(self, channel, angle=np.pi, phase=0):
+        lower_leg_frequency = discretize_frequency(
+            self.ia_center_frequency
+        ) - discretize_frequency(self.adjusted_carrier_splitting)
+        return [
+            PulseData(
+                channel,
+                (angle / np.pi) * self.co_ia_resonant_pi_time,
+                freq0=lower_leg_frequency,
+                freq1=discretize_frequency(self.ia_center_frequency),
+                amp0=self.amp0_coprop_list[int(channel)],
+                amp1=self.amp1_coprop_list[int(channel)],
+                phase0=0,
+                phase1=phase,
+                sync_mask=both_tones,
+                fb_enable_mask=tone0,
+            )
         ]
 
 
@@ -299,40 +328,47 @@ class DynamicalDecouplingGates:
         phase = phase1 if angle > 0 else phase1 + 180
         qchannel = self.qubit_mapping[channel]
         framerot_input = self.SK1_framerot / (self.pulse_duration + duration_4pi)
+        lower_freq = discretize_frequency(
+            self.ia_center_frequency
+        ) - discretize_frequency(adjusted_carrier_splitting)
+        upper_freq = discretize_frequency(self.ia_center_frequency)
         return [
             PulseData(
                 GLOBAL_BEAM,
                 duration + duration_4pi,
-                freq0=self.freq0,
-                freq1=self.freq1,
+                freq0=lower_freq,
+                freq1=upper_freq,
                 amp0=self.amp0_counterprop,
                 amp1=0,
                 phase1=0,
-                sync_mask=0b11,
+                sync_mask=both_tones,
+                fb_enable_mask=tone0,
             ),
             PulseData(
                 qchannel,
                 duration,
-                freq0=self.freq0,
-                freq1=self.freq1,
+                freq0=lower_freq,
+                freq1=upper_freq,
                 amp0=0,
                 amp1=self.amp1_counterprop_list[int(qchannel)],
                 phase1=phase,
                 framerot0=(0, framerot_input * duration),
                 apply_at_eof_mask=0,
-                sync_mask=0b11,
+                sync_mask=both_tones,
+                fb_enable_mask=tone0,
             ),
             PulseData(
                 qchannel,
                 duration_4pi,
-                freq0=self.freq0,
-                freq1=self.freq1,
+                freq0=lower_freq,
+                freq1=upper_freq,
                 amp0=0,
                 amp1=self.amp1_counterprop_list[int(qchannel)],
                 phase1=[phase + phscorr, phase - phscorr],
                 framerot0=(0, framerot_input * duration_4pi),
                 apply_at_eof_mask=0,
-                sync_mask=0b11,
+                sync_mask=both_tones,
+                fb_enable_mask=tone0,
             ),
         ]
 
@@ -350,12 +386,16 @@ class DynamicalDecouplingGates:
         phase = phase1 if angle > 0 else phase1 + 180
         qchannel = self.qubit_mapping[channel]
         framerot_input = self.SK1_framerot / (duration_pi2 + duration_4pi)
+        lower_freq = discretize_frequency(
+            self.ia_center_frequency
+        ) - discretize_frequency(adjusted_carrier_splitting)
+        upper_freq = discretize_frequency(self.ia_center_frequency)
         return [
             PulseData(
                 qchannel,
                 duration,
-                freq0=self.freq0,
-                freq1=self.freq1,
+                freq0=lower_freq,
+                freq1=upper_freq,
                 amp0=self.amp0_coprop_list[int(qchannel)],
                 amp1=self.amp1_coprop_list[int(qchannel)],
                 phase1=phase,
@@ -367,15 +407,16 @@ class DynamicalDecouplingGates:
             PulseData(
                 qchannel,
                 duration_4pi,
-                freq0=self.freq0,
-                freq1=self.freq1,
+                freq0=lower_freq,
+                freq1=upper_freq,
                 amp0=self.amp0_coprop_list[int(qchannel)],
                 amp1=self.amp1_coprop_list[int(qchannel)],
                 phase1=[phase + phscorr, phase - phscorr],
                 framerot0=(0, framerot_input * duration_4pi),
                 apply_at_eof_mask=0,
                 fwd_frame0_mask=tone1,
-                sync_mask=0b11,
+                sync_mask=both_tones,
+                fb_enable_mask=tone0,
             ),
         ]
 
@@ -389,7 +430,8 @@ class StandardJaqalGates:
 
     def gate_R(self, channel, phase, angle):
         # return self.gate_SK1(channel, angle, phase*180/pi)
-        return self.gate_CounterProp(channel, angle=angle, phase=phase)
+        # return self.gate_RCounter(channel, angle=angle, phase=phase)
+        return self.gate_RCoIA(channel, angle=angle, phase=phase)
 
     def gate_Rx(self, channel, angle):
         return self.gate_R(channel, phase=0, angle=angle)

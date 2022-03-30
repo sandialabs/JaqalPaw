@@ -9,4 +9,4 @@ class GatePulses(
     Macros,
 ):
     def gate_R(self, channel, phase, angle):
-        return self.gate_CounterProp(channel, angle=angle, phase=phase)
+        return self.gate_RCoIA(channel, angle=angle, phase=phase)
