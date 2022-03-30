@@ -420,18 +420,13 @@ class DynamicalDecouplingGates:
             ),
         ]
 
-
-class StandardJaqalGates:
-    """Single Qubit Gates as defined in Jaqal."""
-
     def gate_SK1(self, channel, angle, phase1=0):
         # This wrapper calls the co-propagating version of the single-qubit gate, but can be swapped to call the counter-propagating version
         return self.gate_SK1_coprop(channel, angle, phase1)
 
-    def gate_R(self, channel, phase, angle):
-        # return self.gate_SK1(channel, angle, phase*180/pi)
-        # return self.gate_RCounter(channel, angle=angle, phase=phase)
-        return self.gate_RCoIA(channel, angle=angle, phase=phase)
+
+class StandardJaqalGates:
+    """Single Qubit Gates as defined in Jaqal."""
 
     def gate_Rx(self, channel, angle):
         return self.gate_R(channel, phase=0, angle=angle)
