@@ -1,0 +1,13 @@
+from .ex4 usepulses *
+register q[3]
+
+loop 4 {
+	G q[2]
+	gap q[2]
+}
+
+loop 4 {
+	G_gap q[2]
+}
+
+G_gap_multi q[2] 4

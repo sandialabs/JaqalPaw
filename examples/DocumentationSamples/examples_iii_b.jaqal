@@ -1,0 +1,8 @@
+from .examples_iii_b usepulses *
+register q[5]
+
+G10A q[0]
+G10B q[1]
+G11 q[2]
+G12 q[3]
+G13 q[4]

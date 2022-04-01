@@ -1,0 +1,4 @@
+from .examples_iv usepulses *
+register q[3]
+
+< G_coprop q[1] | G_counterprop q[2] >

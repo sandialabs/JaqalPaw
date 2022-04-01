@@ -1,0 +1,4 @@
+from .ex14 usepulses *
+register q[3]
+
+G q[1] q[2]
