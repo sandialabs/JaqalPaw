@@ -89,7 +89,7 @@ class MSExemplar(QSCOUTBuiltins, HelperFunctions):
             amp_input = np.array([1, 1])  # square pulse
             framerot_input = self.MS_framerot
             framerot_app = (
-                0b11  # Applies entire Stark shift correction at end of the pulse
+                0b01  # Applies entire Stark shift correction at end of the pulse
             )
 
         listtoReturn = [
@@ -97,9 +97,7 @@ class MSExemplar(QSCOUTBuiltins, HelperFunctions):
                 GLOBAL_BEAM,
                 self.MS_pulse_duration,
                 freq0=global_beam_frequency,
-                freq1=self.global_center_frequency,  # not used
                 amp0=tuple(amp_input * global_amp * global_amp_scale),
-                amp1=0,
                 phase0=0,
                 phase1=0,
                 sync_mask=both_tones,

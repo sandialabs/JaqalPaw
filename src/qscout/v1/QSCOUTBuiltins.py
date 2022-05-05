@@ -241,7 +241,7 @@ class UtilityPulses:
             )
         ret.append(
             PulseData(
-                0,
+                GLOBAL_BEAM,
                 max_time,
                 amp0=self.amp0_global_SBC,
                 freq0=self.global_center_frequency,
@@ -274,22 +274,21 @@ class UtilityPulses:
                 amp0=self.amp0_counterprop,
                 phase0=0,
                 sync_mask=tone0,
-                fb_enable_mask=tone1
+                fb_enable_mask=no_tones
                 if global_beam_frequency < self.ia_center_frequency
                 else tone0,
             ),
             PulseData(
                 channel,
                 duration,
-                freq0=0,
                 freq1=discretize_frequency(self.ia_center_frequency),
-                amp0=0,
                 amp1=self.amp1_counterprop_list[int(channel)],
                 phase1=phase,
-                sync_mask=both_tones,
-                fb_enable_mask=tone0
+                sync_mask=tone1,
+                fb_enable_mask=no_tones
                 if global_beam_frequency < self.ia_center_frequency
                 else tone1,
+                fwd_frame0_mask=tone1,
             ),
         ]
 
@@ -309,6 +308,7 @@ class UtilityPulses:
                 phase1=phase,
                 sync_mask=both_tones,
                 fb_enable_mask=tone0,
+                fwd_frame0_mask=tone1,
             )
         ]
 
@@ -337,38 +337,33 @@ class DynamicalDecouplingGates:
                 GLOBAL_BEAM,
                 duration + duration_4pi,
                 freq0=lower_freq,
-                freq1=upper_freq,
                 amp0=self.amp0_counterprop,
-                amp1=0,
-                phase1=0,
-                sync_mask=both_tones,
+                sync_mask=tone0,
                 fb_enable_mask=tone0,
             ),
             PulseData(
                 qchannel,
                 duration,
-                freq0=lower_freq,
                 freq1=upper_freq,
-                amp0=0,
                 amp1=self.amp1_counterprop_list[int(qchannel)],
                 phase1=phase,
                 framerot0=(0, framerot_input * duration),
                 apply_at_end_mask=0,
                 sync_mask=both_tones,
                 fb_enable_mask=tone0,
+                fwd_frame0_mask=tone1,
             ),
             PulseData(
                 qchannel,
                 duration_4pi,
-                freq0=lower_freq,
                 freq1=upper_freq,
-                amp0=0,
                 amp1=self.amp1_counterprop_list[int(qchannel)],
                 phase1=[phase + phscorr, phase - phscorr],
                 framerot0=(0, framerot_input * duration_4pi),
                 apply_at_end_mask=0,
                 sync_mask=both_tones,
                 fb_enable_mask=tone0,
+                fwd_frame0_mask=tone1,
             ),
         ]
 
@@ -400,7 +395,6 @@ class DynamicalDecouplingGates:
                 amp1=self.amp1_coprop_list[int(qchannel)],
                 phase1=phase,
                 framerot0=(0, framerot_input * duration),
-                apply_at_end_mask=0,
                 fwd_frame0_mask=tone1,
                 sync_mask=0b11,
             ),
@@ -413,7 +407,6 @@ class DynamicalDecouplingGates:
                 amp1=self.amp1_coprop_list[int(qchannel)],
                 phase1=[phase + phscorr, phase - phscorr],
                 framerot0=(0, framerot_input * duration_4pi),
-                apply_at_end_mask=0,
                 fwd_frame0_mask=tone1,
                 sync_mask=both_tones,
                 fb_enable_mask=tone0,
@@ -440,7 +433,6 @@ class StandardJaqalGates:
                 self.qubit_mapping[channel],
                 100e-9,
                 framerot0=-angle * 180 / np.pi,
-                sync_mask=3,
             )
         ]
 

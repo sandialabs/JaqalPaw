@@ -165,7 +165,7 @@ class ModulatedMSExemplar(QSCOUTBuiltins, HelperFunctions):
             framerot_app = 0
         else:
             framerot_input = self.MS_framerot
-            framerot_app = 0b11
+            framerot_app = 0b01
 
         # If we are scanning global_duration parameter, generate a list of
         #   amplitudes to shut off the global beam after global_duration.
@@ -181,10 +181,8 @@ class ModulatedMSExemplar(QSCOUTBuiltins, HelperFunctions):
             PulseData(
                 GLOBAL_BEAM,
                 self.MS_pulse_duration,
-                freq0=global_beam_frequency,
                 freq1=self.global_center_frequency,
                 amp0=global_amp,
-                amp1=0,
                 phase0=phase_steps,
                 phase1=0,
                 sync_mask=0b11,
@@ -197,10 +195,11 @@ class ModulatedMSExemplar(QSCOUTBuiltins, HelperFunctions):
                 freq1=freq_fm1,
                 amp0=tuple(self.MS_blue_amp_list[channel1] * amp_scale),
                 amp1=tuple(self.MS_red_amp_list[channel1] * amp_scale),
-                framerot0=framerot_input,
-                apply_at_end_mask=framerot_app,
                 phase0=0,
                 phase1=0,
+                framerot0=framerot_input,
+                apply_at_end_mask=framerot_app,
+                fwd_frame0_mask=both_tones,
                 sync_mask=0b11,
                 fb_enable_mask=0b00,
             ),
@@ -218,6 +217,7 @@ class ModulatedMSExemplar(QSCOUTBuiltins, HelperFunctions):
                     phase1=0,
                     framerot0=framerot_input,
                     apply_at_end_mask=framerot_app,
+                    fwd_frame0_mask=both_tones,
                     sync_mask=0b11,
                     fb_enable_mask=0b00,
                 )
