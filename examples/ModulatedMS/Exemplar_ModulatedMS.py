@@ -15,7 +15,7 @@ from scipy.special import erf as _erf
 import os
 import sys
 
-from qscout.v1.QSCOUTBuiltins import QSCOUTBuiltins, GLOBAL_BEAM
+from qscout.v1.QSCOUTBuiltins import QSCOUTBuiltins, GLOBAL_BEAM, both_tones
 
 
 class HelperFunctions:
