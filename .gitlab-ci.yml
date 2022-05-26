@@ -26,6 +26,13 @@ Unified Tests:
     - pip install black~=22.1 && black --check .
     - cd ..
     - rm -fr jaqalpaq && git clone --depth 1 "$(echo "${CI_REPOSITORY_URL}" | sed 's/jaqalpaw.git/jaqalpaq.git/' )" -b "${JAQALPAQ_BRANCH}"
+    - cd jaqalpaw
+    - ../jaqalpaq/devel/refresh-data-files setup.cfg.new
+    - if ! diff -q setup.cfg.new setup.cfg ; then
+        echo "Run devel/refresh-data-files to refresh examples list." ;
+        exit 1 ;
+      fi
+    - cd ..
     - LOCAL_JAQALPAQ=./jaqalpaq LOCAL_JAQALPAQ_EXTRAS="" LOCAL_QSCOUT_GATEMODELS=""
       ./jaqalpaq/install.sh
     - cd jaqalpaw
