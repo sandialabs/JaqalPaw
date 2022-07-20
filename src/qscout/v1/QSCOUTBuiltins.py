@@ -10,6 +10,7 @@ this file will be updated at: https://qscout.sandia.gov
 
 Last Update: September 14, 2021
 """
+import abc
 
 from jaqalpaw.utilities.datatypes import Spline, Discrete, Loop, Parallel, Sequential
 from jaqalpaw.ir.pulse_data import PulseData
@@ -419,7 +420,14 @@ class DynamicalDecouplingGates:
 
 
 class StandardJaqalGates:
-    """Single Qubit Gates as defined in Jaqal."""
+    """All single Qubit Gates as defined in Jaqal, except R
+
+    This class extends a definition of the Jaqal R gate to
+    the other standard single qubit Jaqal gates."""
+
+    @abc.abstractmethod
+    def gate_R(self, channel, angle):
+        pass
 
     def gate_Rx(self, channel, angle):
         return self.gate_R(channel, phase=0, angle=angle)
