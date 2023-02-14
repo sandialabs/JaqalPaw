@@ -1,5 +1,11 @@
 from enum import Enum
 
+VERSION = 2
+ENABLE_MLUT_PACKING = True
+if VERSION == 2:
+    # needed for updated metadata mapping to work with HW
+    ENABLE_MLUT_PACKING = True 
+
 ENDIANNESS = "little"
 MAXLEN = 256 // 8  # Number of bytes in a single transfer
 
@@ -13,8 +19,12 @@ MAXLEN = 256 // 8  # Number of bytes in a single transfer
 # size (GPRGW) used to program the GLUT
 GPRGW = 12  # Gate LUT write address width
 GLUTW = 11  # Gate LUT read address width
-SLUTW = 14  # Sequence LUT address width
+SLUTW = 13  # Sequence LUT address width
 PLUTW = 12  # Pulse LUT address width
+if ENABLE_MLUT_PACKING:
+    SLUTDW = 20
+else:
+    SLUTDW = PLUTW
 
 # Ancilla readout extends the address space for readout from the GLUT.
 # While the hardware supports a more free form approach to how one might
@@ -58,8 +68,11 @@ GLUT_BYTECNT_LSB = 236  # Number of packed GLUT programming words
 SLUT_BYTECNT_LSB = 236  # Number of packed SLUT programming words
 GSEQ_BYTECNT_LSB = 239  # Number of packed gate sequence identifiers
 PLUT_ADDR_LSB = 229  # LSB for address word when programming PLUT
-DMA_MUX_LSB = 220  # LSB for routing to channel out of DMA
 
+if VERSION == 2:
+    DMA_MUX_LSB = 248  # LSB for routing to channel out of DMA
+else:
+    DMA_MUX_LSB = 220  # LSB for routing to channel out of DMA
 
 # The compiler needs to incorporate a tri-state comparison for differentiating
 # between different gate sequence modes, such as a conventional gate sequence
@@ -76,7 +89,10 @@ class GateSequenceMode(Enum):
 # number can exceed 8, in which case a separate board is indicated, but
 # the channel on that board needs to be calculated modulo 8 and is
 # performed by using PER_BOARD_CH_MASK
-PER_BOARD_CH_MASK = 0b111  # Bit mask for channel routing for DMA MUX
+if VERSION == 2:
+    PER_BOARD_CH_MASK = 0b1111_1111  # Bit mask for channel routing for DMA MUX
+else:
+    PER_BOARD_CH_MASK = 0b111  # Bit mask for channel routing for DMA MUX
 
 # Smallest LSB used for setting packing limits on programming data.
 # This depends on the above metadata LSBs
@@ -92,24 +108,44 @@ PACKING_LIMIT_LSB = min(
     DMA_MUX_LSB,
 )
 
-# The following LSBs indicate locations of metadata used for raw data input.
-# Raw data input is typically stored in the PLUT, but can also be used in
-# bypass mode.
-MODTYPE_LSB = 253  # Modulation type (freq/phase/amp/framerot)
-SPLSHIFT_LSB = 248  # Fixed point shift for spline coefficients
-AMP_FB_EN_LSB = 228  # Amplitude feedback enable (placeholder)
-FRQ_FB_EN_LSB = 227  # Frequency feedback enable
-OUTPUT_EN_LSB = 226  # Toggle output enable
-SYNC_FLAG_LSB = 225  # Apply global synchronization
-WAIT_TRIG_LSB = 224  # Wait for external trigger
+if VERSION==2:
+    # The following LSBs indicate locations of metadata used for raw data input.
+    # Raw data input is typically stored in the PLUT, but can also be used in
+    # bypass mode.
+    MODTYPE_LSB = 216  # Modulation type (freq/phase/amp/framerot)
+    SPLSHIFT_LSB = 208  # Fixed point shift for spline coefficients
+    AMP_FB_EN_LSB = 207  # Amplitude feedback enable (placeholder)
+    FRQ_FB_EN_LSB = 206  # Frequency feedback enable
+    OUTPUT_EN_LSB = 205  # Toggle output enable
+    SYNC_FLAG_LSB = 204  # Apply global synchronization
+    WAIT_TRIG_LSB = 203  # Wait for external trigger
 
-# The following LSBs are specific to frame rotation metadata
-APPLY_EOF_LSB = 228  # Apply frame rotation at end of pulse
-CLR_FRAME_LSB = 227  # Clear frame accumulator
-FWD_FRM_T1_LSB = 226  # Forward frame to tone 1
-FWD_FRM_T0_LSB = 225  # Forward frame to tone 0
-INV_FRM_T1_LSB = 219  # Invert sign on frame for tone 1
-INV_FRM_T0_LSB = 218  # Invert sign on frame for tone 0
+    # The following LSBs are specific to frame rotation metadata
+    APPLY_EOF_LSB = 207 # Apply frame rotation at end of pulse
+    CLR_FRAME_LSB = 206  # Clear frame accumulator
+    FWD_FRM_T1_LSB = 205  # Forward frame to tone 1
+    FWD_FRM_T0_LSB = 204  # Forward frame to tone 0
+    INV_FRM_T1_LSB = 202  # Invert sign on frame for tone 1
+    INV_FRM_T0_LSB = 201  # Invert sign on frame for tone 0
+else:
+    # The following LSBs indicate locations of metadata used for raw data input.
+    # Raw data input is typically stored in the PLUT, but can also be used in
+    # bypass mode.
+    MODTYPE_LSB = 253  # Modulation type (freq/phase/amp/framerot)
+    SPLSHIFT_LSB = 248  # Fixed point shift for spline coefficients
+    AMP_FB_EN_LSB = 228  # Amplitude feedback enable (placeholder)
+    FRQ_FB_EN_LSB = 227  # Frequency feedback enable
+    OUTPUT_EN_LSB = 226  # Toggle output enable
+    SYNC_FLAG_LSB = 225  # Apply global synchronization
+    WAIT_TRIG_LSB = 224  # Wait for external trigger
+
+    # The following LSBs are specific to frame rotation metadata
+    APPLY_EOF_LSB = 228  # Apply frame rotation at end of pulse
+    CLR_FRAME_LSB = 227  # Clear frame accumulator
+    FWD_FRM_T1_LSB = 226  # Forward frame to tone 1
+    FWD_FRM_T0_LSB = 225  # Forward frame to tone 0
+    INV_FRM_T1_LSB = 219  # Invert sign on frame for tone 1
+    INV_FRM_T0_LSB = 218  # Invert sign on frame for tone 0
 
 # Raw pulse data information is currently broken up into metadata, duration
 # and 4 spline coefficients listed with bit widths from MSB to LSB as
@@ -138,7 +174,7 @@ INV_FRM_T0_LSB_LOC = INV_FRM_T0_LSB - METADATA_START_LSB
 
 # Number of programming or gate sequence words that can be packed into a single
 # transfer. PLUT programming data is always one word per transfer.
-SLUT_BYTECNT = PACKING_LIMIT_LSB // (SLUTW + PLUTW)
+SLUT_BYTECNT = PACKING_LIMIT_LSB // (SLUTW + SLUTDW)
 GLUT_BYTECNT = PACKING_LIMIT_LSB // (GPRGW + 2 * SLUTW)
 GSEQ_BYTECNT = PACKING_LIMIT_LSB // GLUTW
 

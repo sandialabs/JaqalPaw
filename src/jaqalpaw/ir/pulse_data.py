@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from functools import lru_cache
+from jaqalpaw.bytecode.encoding_parameters import MODTYPE_LSB
 
 from jaqalpaw.bytecode.pulse_binarization import pulse
 from jaqalpaw.utilities.helper_functions import make_list_hashable
@@ -276,7 +277,7 @@ class PulseData:
             for wrd in self.binary_data:
                 bdat = int.from_bytes(wrd, byteorder="little", signed=False)
                 nclks = (bdat >> 160) & 0xFFFFFFFFFF
-                dtype = bdat >> 253
+                dtype = bdat >> MODTYPE_LSB
                 bdatdict[dtype] += nclks  # +3
                 print(f"dtype {dtype}, clock cycles {nclks}")
             print("Total Times")

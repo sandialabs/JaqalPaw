@@ -1,3 +1,4 @@
+import logging
 import time
 import asyncio
 
@@ -6,6 +7,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
     APPLY_EOF_LSB,
     ANCILLA_COMPILER_TAG_BIT,
     ANCILLA_STATE_LSB,
+    ENDIANNESS,
     FWD_FRM_T0_LSB,
     INV_FRM_T0_LSB,
     FRMROT0INT,
@@ -37,8 +39,11 @@ async def DMA_arbiter(name, queue, data_output_queues):
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
-        channel = (data >> DMA_MUX_LSB) & 0b111
-        await data_output_queues[channel].put(raw_data)
+        for channel in get_channels(data):
+            if VERSION == 2:
+                await data_output_queues[channel].put(int_to_bytes((bytes_to_int(raw_data)&((1<<DMA_MUX_LSB)-1))|(1<<channel<<DMA_MUX_LSB)))
+            else:
+                await data_output_queues[channel].put(raw_data)
         queue.task_done()
 
 
@@ -50,10 +55,15 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
-        mod_type = (data >> MODTYPE_LSB) & 0b111
         prog_mode = (data >> PROG_MODE_LSB) & 0b111
         if prog_mode == 0b111:
-            await data_output_queues[mod_type].put(raw_data)
+            for mod_type in get_mod_types(data):
+                if VERSION == 2:
+                    mask = ((1<<256)-1) ^ (((1<<8)-1)<<MODTYPE_LSB)
+                    cdat = int_to_bytes((data&mask)|(1<<mod_type<<MODTYPE_LSB))
+                    await data_output_queues[mod_type].put(cdat)
+                else:
+                    await data_output_queues[mod_type].put(raw_data)
         elif prog_mode == 0b001:
             parse_GLUT_prog_data(data)
         elif prog_mode == 0b010:
@@ -77,11 +87,9 @@ async def gate_seq_arbiter(name, queue, data_output_queues):
             else:
                 oraddr = 0
             for gs_data in parse_gate_seq_data(data, oraddr=oraddr):
-                new_mod_type = (
-                    int.from_bytes(gs_data, byteorder="little", signed=False)
-                    >> MODTYPE_LSB
-                ) & 0b111
-                await data_output_queues[new_mod_type].put(gs_data)
+                for new_mod_type in get_mod_types(
+                    int.from_bytes(gs_data, byteorder=ENDIANNESS, signed=False)):
+                    await data_output_queues[new_mod_type].put(gs_data)
         queue.task_done()
 
 
@@ -101,6 +109,7 @@ async def spline_engine(
     which generates the corresponding output and stores the data in time_list and data_list for
     plotting and/or inspecting the data"""
     eof_data = 0
+    totaldur = 0
     while True:
         raw_data = await queue.get()
         data = int.from_bytes(raw_data, byteorder="little", signed=False)
@@ -110,106 +119,110 @@ async def spline_engine(
         inv_frame0_mask = 0
         fwd_frame1_mask = 0
         inv_frame1_mask = 0
-        mod_type = (data >> MODTYPE_LSB) & 0b111
-        if mod_type == FRMROT0INT:
-            fwd_frame0_mask = (data >> FWD_FRM_T0_LSB) & 0b11
-            inv_frame0_mask = (data >> INV_FRM_T0_LSB) & 0b11
-        elif mod_type == FRMROT1INT:
-            fwd_frame1_mask = (data >> FWD_FRM_T0_LSB) & 0b11
-            inv_frame1_mask = (data >> INV_FRM_T0_LSB) & 0b11
-        shift = (data >> SPLSHIFT_LSB) & 0b11111
-        channel = (data >> DMA_MUX_LSB) & 0b111
-        reset_accum = (data >> CLR_FRAME_LSB) & 0b1
-        apply_at_eof = (data >> APPLY_EOF_LSB) & 0b1
-        dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
-        # Convert binary values to real-unit equivalents for monitoring
-        # dur += TIMECORR+0#+4
-        dur_real = convert_time_from_clock_cycles(dur)
-        U0_real = mod_type_dict[mod_type]["realConvFunc"](U0)
-        U1_real = mod_type_dict[mod_type]["realConvFunc"](U1)
-        U2_real = mod_type_dict[mod_type]["realConvFunc"](U2)
-        U3_real = mod_type_dict[mod_type]["realConvFunc"](U3)
-        # This if statement is not absolutely necessary but reduces number of points to plot, forcing
-        # the function to always jump to the else clause will produce the same output and is more
-        # consistent with how the hardware is actually operating.
-        if U1 == 0 and U2 == 0 and U3 == 0:
-            time_list.append(time_list[-1] + dur)
-            if mod_type in (
-                FRMROT0INT,
-                FRMROT1INT,
-            ):  # then we have a z rotation which must accumulate from old values
-                if reset_accum:
-                    last_val = 0
-                    eof_data = 0
+        for mod_type in get_mod_types(data):
+            if mod_type == FRMROT0INT:
+                fwd_frame0_mask = (data >> FWD_FRM_T0_LSB) & 0b11
+                inv_frame0_mask = (data >> INV_FRM_T0_LSB) & 0b11
+            elif mod_type == FRMROT1INT:
+                fwd_frame1_mask = (data >> FWD_FRM_T0_LSB) & 0b11
+                inv_frame1_mask = (data >> INV_FRM_T0_LSB) & 0b11
+            shift = (data >> SPLSHIFT_LSB) & 0b11111
+            channels = get_channels(data)
+            if len(channels) > 1:
+                raise Exception('Spline engines require a single channel')
+            channel = channels[0]
+
+            reset_accum = (data >> CLR_FRAME_LSB) & 0b1
+            apply_at_eof = (data >> APPLY_EOF_LSB) & 0b1
+            dur, U0, U1, U2, U3 = parse_bypass_data(raw_data)
+            # Convert binary values to real-unit equivalents for monitoring
+            # dur += TIMECORR+0#+4
+            dur_real = convert_time_from_clock_cycles(dur)
+            U0_real = mod_type_dict[mod_type]["realConvFunc"](U0)
+            U1_real = mod_type_dict[mod_type]["realConvFunc"](U1)
+            U2_real = mod_type_dict[mod_type]["realConvFunc"](U2)
+            U3_real = mod_type_dict[mod_type]["realConvFunc"](U3)
+            # This if statement is not absolutely necessary but reduces number of points to plot, forcing
+            # the function to always jump to the else clause will produce the same output and is more
+            # consistent with how the hardware is actually operating.
+            if U1 == 0 and U2 == 0 and U3 == 0:
+                time_list.append(time_list[-1] + dur)
+                if mod_type in (
+                    FRMROT0INT,
+                    FRMROT1INT,
+                ):  # then we have a z rotation which must accumulate from old values
+                    if reset_accum:
+                        last_val = 0
+                        eof_data = 0
+                    else:
+                        last_val = data_list[-1]
+                    if apply_at_eof:
+                        data_list.append(last_val + eof_data)
+                        eof_data = U0_real
+                    else:
+                        data_list.append(last_val + U0_real + eof_data)
+                        eof_data = 0
+                    if mod_type == FRMROT0INT:
+                        fwd_frame0_mask_list.append(fwd_frame0_mask)
+                        inv_frame0_mask_list.append(inv_frame0_mask)
+                    else:
+                        fwd_frame1_mask_list.append(fwd_frame1_mask)
+                        inv_frame1_mask_list.append(inv_frame1_mask)
                 else:
-                    last_val = data_list[-1]
-                if apply_at_eof:
-                    data_list.append(last_val + eof_data)
-                    eof_data = U0_real
-                else:
-                    data_list.append(last_val + U0_real + eof_data)
-                    eof_data = 0
-                if mod_type == FRMROT0INT:
-                    fwd_frame0_mask_list.append(fwd_frame0_mask)
-                    inv_frame0_mask_list.append(inv_frame0_mask)
-                else:
-                    fwd_frame1_mask_list.append(fwd_frame1_mask)
-                    inv_frame1_mask_list.append(inv_frame1_mask)
+                    data_list.append(U0_real)
+                    waittrig_list[-1] = waittrig
+                    waittrig_list.append(0)
+                    enablemask_list[-1] = enablemask
+                    enablemask_list.append(0)
+                logging.getLogger(__name__).info(
+                    f"channel: {channel}, type: {mod_type}, Duration: {dur_real} s, U0: {U0_real}, U1: {U1_real}, U2: {U2_real}, U3: {U3_real}"
+                )
             else:
-                data_list.append(U0_real)
-                waittrig_list[-1] = waittrig
-                waittrig_list.append(0)
-                enablemask_list[-1] = enablemask
-                enablemask_list.append(0)
-            print(
-                f"channel: {channel}, type: {mod_type}, Duration: {dur_real} s, U0: {U0_real}, U1: {U1_real}, U2: {U2_real}, U3: {U3_real}"
-            )
-        else:
-            # Bit shifting is done to enhance precision within firmware
-            U1_shift = U1
-            U2_shift = U2
-            U3_shift = U3
-            # Calculate the same for real values for monitoring purposes only
-            U1_rshift = U1_real / (1 << shift)
-            U2_rshift = U2_real / (1 << (shift * 2))
-            U3_rshift = U3_real / (1 << (shift * 3))
-            # Pack the coefficients in a format that can be handled by the spline engine emulator
-            coeffs = np.zeros((4, 1))
-            coeffs[0, 0] = U3_shift
-            coeffs[1, 0] = U2_shift
-            coeffs[2, 0] = U1_shift
-            coeffs[3, 0] = U0
-            # The additional 3 clock cycles are related to a subtle hardware issue
-            xdata = np.array(list(range(dur))) + 1
-            spline_data = pdq_spline(coeffs, [0], nsteps=dur, shift=shift)
-            spline_data_real = list(
-                map(mod_type_dict[mod_type]["realConvFunc"], spline_data)
-            )
-            xdata_real = list(map(lambda x: time_list[-1] + x, xdata))
-            time_list.extend(xdata_real[:])
-            last_val = data_list[-1]
-            if mod_type in (
-                FRMROT0INT,
-                FRMROT1INT,
-            ):  # then we have a z rotation which must accumulate from old values
-                if reset_accum:
-                    last_val = 0
+                # Bit shifting is done to enhance precision within firmware
+                U1_shift = U1
+                U2_shift = U2
+                U3_shift = U3
+                # Calculate the same for real values for monitoring purposes only
+                U1_rshift = U1_real / (1 << shift)
+                U2_rshift = U2_real / (1 << (shift * 2))
+                U3_rshift = U3_real / (1 << (shift * 3))
+                # Pack the coefficients in a format that can be handled by the spline engine emulator
+                coeffs = np.zeros((4, 1))
+                coeffs[0, 0] = U3_shift
+                coeffs[1, 0] = U2_shift
+                coeffs[2, 0] = U1_shift
+                coeffs[3, 0] = U0
+                # The additional 3 clock cycles are related to a subtle hardware issue
+                xdata = np.array(list(range(dur))) + 1
+                spline_data = pdq_spline(coeffs, [0], nsteps=dur, shift=shift)
+                spline_data_real = list(
+                    map(mod_type_dict[mod_type]["realConvFunc"], spline_data)
+                )
+                xdata_real = list(map(lambda x: time_list[-1] + x, xdata))
+                time_list.extend(xdata_real[:])
+                last_val = data_list[-1]
+                if mod_type in (
+                    FRMROT0INT,
+                    FRMROT1INT,
+                ):  # then we have a z rotation which must accumulate from old values
+                    if reset_accum:
+                        last_val = 0
+                        eof_data = 0
+                    data_list.extend(last_val + eof_data + np.array(spline_data_real))
                     eof_data = 0
-                data_list.extend(last_val + eof_data + np.array(spline_data_real))
-                eof_data = 0
-                if mod_type == FRMROT0INT:
-                    fwd_frame0_mask_list.extend([fwd_frame0_mask] * len(xdata_real))
-                    inv_frame0_mask_list.extend([inv_frame0_mask] * len(xdata_real))
+                    if mod_type == FRMROT0INT:
+                        fwd_frame0_mask_list.extend([fwd_frame0_mask] * len(xdata_real))
+                        inv_frame0_mask_list.extend([inv_frame0_mask] * len(xdata_real))
+                    else:
+                        fwd_frame1_mask_list.extend([fwd_frame1_mask] * len(xdata_real))
+                        inv_frame1_mask_list.extend([inv_frame1_mask] * len(xdata_real))
                 else:
-                    fwd_frame1_mask_list.extend([fwd_frame1_mask] * len(xdata_real))
-                    inv_frame1_mask_list.extend([inv_frame1_mask] * len(xdata_real))
-            else:
-                data_list.extend(spline_data_real)
-            print(
-                f"channel: {channel}, type: {mod_type}, Duration: {dur_real} s, "
-                f"U0: {U0_real}, U1: {U1_rshift}, U2: {U2_rshift}, U3: {U3_rshift}"
-            )
-        # For good measure, wait for the duration encoded in the raw data, for more accurate emulation, this duration
-        # should be scaled so as to reduce the influence imposed by computational delay
-        # await asyncio.sleep(dur_real)
-        queue.task_done()
+                    data_list.extend(spline_data_real)
+                logging.getLogger(__name__).info(
+                    f"channel: {channel}, type: {mod_type}, Duration: {dur_real} s, "
+                    f"U0: {U0_real}, U1: {U1_rshift}, U2: {U2_rshift}, U3: {U3_rshift}"
+                )
+            # For good measure, wait for the duration encoded in the raw data, for more accurate emulation, this duration
+            # should be scaled so as to reduce the influence imposed by computational delay
+            # await asyncio.sleep(dur_real)
+            queue.task_done()

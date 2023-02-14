@@ -1,7 +1,10 @@
 import time
+import numpy as np
 from pathlib import Path
-from collections import defaultdict
-from itertools import zip_longest
+from collections import Counter as multiset, defaultdict
+import logging
+from itertools import chain, zip_longest
+from enum import IntEnum
 
 from jaqalpaw.ir.circuit_constructor import CircuitConstructor
 from jaqalpaw.ir.gate_slice import GateSlice
@@ -12,15 +15,22 @@ from jaqalpaw.bytecode.lut_programming import (
     program_GLUT,
     gate_sequence_bytes,
 )
-from .time_ordering import timesort_bytelist
+from jaqalpaw.compiler.time_ordering import timesort_bytelist
 from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles, Branch, Case
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 from jaqalpaw.utilities.parameters import CLKFREQ
 from jaqalpaw.bytecode.encoding_parameters import (
     ANCILLA_COMPILER_TAG_BIT,
     ANCILLA_STATE_LSB,
+    ENABLE_MLUT_PACKING,
+    GLUTW,
+    MODTYPE_LSB,
+    PLUTW,
+    SLUTW,
+    VERSION,
 )
 from ..ir.circuit_constructor_visitor import populate_gate_slice
+from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
 
 flatten = lambda x: [y for l in x for y in l]
 
@@ -28,6 +38,10 @@ flatten = lambda x: [y for l in x for y in l]
 # ---------- Convert GateSlice IR to Bytecode ------------ #
 # ######################################################## #
 
+class GateletOptimizationType(IntEnum):
+    NoOptimization = 0
+    OptimizeIfNecessary = 1
+    ExhaustiveOptimization = 2
 
 class CircuitCompiler(CircuitConstructor):
     """Compiles the bytecode to be uploaded to the Octet from
@@ -43,10 +57,15 @@ class CircuitCompiler(CircuitConstructor):
         global_delay=None,
         code_literal=None,
         slice_list=None,
+        gatelet_optimization=GateletOptimizationType.OptimizeIfNecessary,
     ):
         super().__init__(num_channels, pulse_definition)
         self.file = file
         self.code_literal = code_literal
+        self.gatelet_optimization = gatelet_optimization
+        self.max_gatelet_opt_iterations = 100
+        self.gatelet_opt_fitness_target = 0
+        self.validate_gatelet_optimization = False  # enable for debugging
         self.binary_data = defaultdict(list)
         self.unique_gates = defaultdict(dict)
         self.gate_hash_recurrence = defaultdict(lambda: defaultdict(int))
@@ -449,8 +468,337 @@ class CircuitCompiler(CircuitConstructor):
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
-        #for k in self.PLUT_data:
-            #print(f"Channel {k}, len {len(self.PLUT_data[k])}")
+        if ENABLE_MLUT_PACKING:
+            cglut = defaultdict(dict)
+            cmlut = defaultdict(dict)
+            cplut = defaultdict(list)
+            gluttot,mluttot,pluttot = 0,0,0
+            ngluttot,nmluttot,npluttot = 0,0,0
+            cgseq = defaultdict(list)
+            for n in range(8):
+                _cglut, _cmlut, _cplut, _cgseq, bls, als = self.recast_lookup_table(self.GLUT_data[n], self.MMAP_data[n], self.PLUT_data[n], self.gate_sequence_ids[n], chidx=n)
+                cglut[n].update(_cglut)
+                cmlut[n].update(_cmlut)
+                cplut[n].extend(_cplut)
+                cgseq[n].extend(_cgseq)
+                gluttot += bls[0]
+                mluttot += bls[1]
+                pluttot += bls[2]
+                ngluttot += als[0]
+                nmluttot += als[1]
+                npluttot += als[2]
+            logging.getLogger(__name__).debug(f"Total GLUT: before {gluttot}, after {ngluttot}, ratio: {ngluttot/gluttot}")
+            logging.getLogger(__name__).debug(f"Total MLUT: before {mluttot}, after {nmluttot}, ratio: {nmluttot/mluttot}")
+            logging.getLogger(__name__).debug(f"Total PLUT: before {pluttot}, after {npluttot}, ratio: {npluttot/pluttot}")
+            logging.getLogger(__name__).debug(f"Total Savings: {(ngluttot+nmluttot+npluttot)/(gluttot+mluttot+pluttot)}")
+            self.PLUT_data = cplut
+            self.MMAP_data = cmlut
+            self.GLUT_data = cglut
+            self.gate_sequence_ids = cgseq
+        else:
+            for ch in range(8):
+                logging.getLogger(__name__).debug(f"LUT sizes channel: {ch}")
+                logging.getLogger(__name__).debug(f"Total GLUT: {len(self.GLUT_data[ch])}")
+                logging.getLogger(__name__).debug(f"Total MLUT: {len(self.MMAP_data[ch])}")
+                logging.getLogger(__name__).debug(f"Total PLUT: {len(self.PLUT_data[ch])}")
+
+    def condense_set(self, _S, optimbound=0):
+        sl = defaultdict(set)
+        _mS = list(map(frozenset,_S))
+        for n,s1 in enumerate(_mS[:-1]):
+            for m,s2 in enumerate(_mS[n:]):
+                aset = s1 & s2
+                if len(aset) > 1:
+                    sl[len(aset)].add((aset,n,m))
+
+        candidates = []
+        for l,ls in sl.items():
+            if l > 1:
+                for fs,n,m in ls:
+                    candidates.append((fs,n,m))
+        maxfit = 0
+        bestc = set()
+        for n, (candidate,j,k) in enumerate(candidates):
+            fitness = sum(map(lambda x: candidate<x, _mS))*len(candidate)
+            if fitness > maxfit:
+                bestn = (j,k)
+                bestc = candidate
+                maxfit = fitness
+        update = maxfit > optimbound
+        if update:
+            ss0,ss1 = bestn
+            bestmultisetc = multiset(_S[ss0]) & multiset(_S[ss1])
+            newInd = [(gi,1) if bestc <= ss else (gi,0) for gi,ss in enumerate(_mS)]
+            newS = [tuple(multiset(ss) - bestmultisetc) if bestc <= ms else ss for ms,ss in zip(_mS,_S)]
+            return newS, True, bestc, newInd
+        return _S, False, multiset(), []
+
+    def optimizeRemap(self, S, optimbound, maxiter=100, smartoptim=False):
+        bestsets = []
+        improved = True
+        gilist = tuple([n] for n in range(len(S)))
+        if smartoptim:
+            maxiter = 1000
+            optimbound = 0
+        for _ in range(maxiter):
+            if (smartoptim  # stop optimization if data fits in LUTs
+                and sum(map(len,chain(S,bestsets)))<(1<<SLUTW)):  # entries fit in MLUT
+                logging.getLogger(__name__).debug(
+                    f"Smart optim satisfied..."
+                    )
+                break
+            logging.getLogger(__name__).debug(
+                f"Optimizing..."
+                )
+            S, improved, bc, newi = self.condense_set(S, optimbound)
+            if improved:
+                bestsets.append(bc)
+                for idx,(_,isfrac) in enumerate(newi):
+                    if isfrac:
+                        gilist[idx].append(len(bestsets)-1+len(gilist))
+            else:
+                break
+        else:
+            logging.getLogger(__name__).debug(
+                f"maximum iterations ({maxiter}) reached before optimization threshold ({optimbound}) met"
+                )
+        Scatlist = (*S,*bestsets)
+        gidTransDict = {k:v for k,v in enumerate(map(tuple,Scatlist))}
+        reducedScatlist = set()
+        for ss in Scatlist:
+            if ss:
+                reducedScatlist.add(tuple(ss))
+        reducedGidMap = {v:k for k,v in enumerate(reducedScatlist)}
+        updatedGidList = [[reducedGidMap[gidTransDict[n]] for n in subgid if n in gidTransDict and gidTransDict[n]] for subgid in gilist]
+        reducedS=list(reducedScatlist)
+        return updatedGidList, reducedS
+
+    @staticmethod
+    def verifyRemap(Sinit, reducedS, updatedGidList):
+        recon = []
+        for fgidl in updatedGidList:
+            gbase = []
+            for gid in fgidl:
+                gbase.extend(reducedS[gid])
+            recon.append(tuple(gbase))
+        return all(map(lambda x: multiset(x[0]) == multiset(x[1]), zip(recon,Sinit)))
+
+    @staticmethod
+    def revindex(ll,val):
+        """Like list.index(val), but find the last index"""
+        for i,l in enumerate(reversed(ll)):
+            if l == val:
+                return len(ll)-i-1
+        return None
+
+    @staticmethod
+    def PLUT256to216(data, include_mod_type=True):
+        if VERSION == 2:
+            return int_to_bytes(bytes_to_int(data) & ((1<<MODTYPE_LSB)-1))
+        idata = bytes_to_int(data)
+        ndata = idata & ((1<<200)-1)
+        if include_mod_type:
+            ndata |= (idata>>MODTYPE_LSB & 0b111) << 213
+        ndata |= (idata>>248 & 0b11111) << 208
+        ndata |= (idata>>224 & 0b11111) << 203
+        ndata |= (idata>>218 & 0b11) << 201
+        return int_to_bytes(ndata)
+
+    def recast_lookup_table(self, glut, mlut, plut, gseq, chidx=0, exhaustive=0, maxiter=100, optimbound=0, smartoptim=True):
+        """Initial integration of remapping MLUT/PLUT so that the MLUT stores N-hot routing"""
+        nplutmap = dict()
+        nroutmap = dict()
+        nplutset = dict()
+        ngsetmlut = dict()
+        nmlut = dict()
+        # get address and data of all elements of PLUT, filter out the routing
+        # data and add to a set for tracking unique data
+        for pido, pdato in enumerate(plut):
+            nplutset[self.PLUT256to216(pdato,include_mod_type=False)] = int_to_bytes(bytes_to_int(pdato)&((1<<MODTYPE_LSB)-1))
+
+        # convert the set to a list so we can reliably retrieve the data's associated index
+        nplutls = tuple(nplutset.keys())
+
+        # create a dict that reindexes the original PLUT data based on the new
+        # set. For each original plut address, also store the target
+        # parameter/tone in a separate routing dictionary
+        for pido, pdato in enumerate(plut):
+            nplutmap[pido] = nplutls.index(self.PLUT256to216(pdato,include_mod_type=False))
+            if VERSION==2:
+                nroutmap[pido] = int(np.log2((bytes_to_int(pdato)>>MODTYPE_LSB)&((1<<8)-1)))
+            else:
+                nroutmap[pido] = (bytes_to_int(pdato)>>MODTYPE_LSB)&0b111
+
+        # reconstruct GLUT and MLUT data based on the new PLUT representation.
+        # Basically just walk the GLUT and convert the original address range
+        # and associated MLUT values to a new representation. Because this new
+        # representation uses N-hot encoding, the number of entries will be
+        # reduced. So the new mlut address is generated using a counter
+        # (nmaddrcnt), which does not increment as new routing data is added to
+        # the same MLUT entry. Because a NOP used to be encoded in the PLUT as
+        #     {0: (amp0, data), 1: (amp1, data), 2: (freq0, data), ...}
+        # where data is all the same and only the routing information changes,
+        # the new formalism will result in a single PLUT entry since routing
+        # information was stripped out, and effectively the MLUT absorbs the
+        # data. MLUT filling is still a problem though, so by giving up some
+        # data bits in the packed representation at the fw level we can tag the
+        # MLUT data with a one-hot routing mask. Before the MLUT and GLUT would
+        # encode the above NOP as 
+        #     MLUT: {0: 0, 1: 1, 2: 2, ...}         GLUT: {0: (0,7)}
+        # Now, the encoding will be
+        #     MLUT: {0: (0b11111111, 0)}            GLUT: {0: (0,0)}
+        # and an Rz gate would be
+        #     MLUT: {0: (0b10111111, 0), 1: (0b01000000, 1) }  GLUT: {0: (0,1)}
+        # Thus the MLUT data size increases from 12 to 20 bits and the encoding 
+        # is N-hot, the number of entries will differ from before.
+
+        nmaddrcnt = 0
+        glutrangereductionmap = dict()
+        glutrangeremap = dict()
+        # setup reverse glut mapping that accounts for branching
+        rglut = defaultdict(list)
+        for gn,gr in glut.items():
+            rglut[gr].append(gn)
+        # walk the original GLUT
+        for gido, gdato in glut.items():
+            if gido & (1<<ANCILLA_COMPILER_TAG_BIT):
+                if self.gatelet_optimization:
+                    self.gatelet_optimization = False
+                    logging.getLogger(__name__).warning("gatelet optimization not yet allowed for circuits with branching")
+            if len(rglut[gdato]) > 1 and gdato in glutrangeremap:
+                continue
+            lmdatoset = []  # list of updated MLUT data (PLUT addresses) to track for remapping
+            nmstartaddr = nmaddrcnt  # new GLUT address bounds need to be tracked independently
+            # get the MLUT addresses
+            for maddr in range(gdato[0],gdato[1]+1):
+                mdato = mlut[maddr]  # old MLUT data (old PLUT addr)
+                # check if remapped PLUT data has been encountered by looking at the remapped PLUT addr
+                if nplutmap[mdato] in lmdatoset:
+                    if (nmlut[self.revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] & (1<<(PLUTW+nroutmap[mdato]))):
+                        # This entry has already been referenced, this is a repeated occurrence so we need to
+                        # advance the address. Due to how sets are being used, we augment the data, and this
+                        # gets filtered out during programming. The reps command is tracked separately from
+                        # the address for this purpose.
+                        lmdatoset.append(nplutmap[mdato])
+                        nmlut[nmaddrcnt] = nplutmap[mdato] | 1<<(PLUTW+nroutmap[mdato]) | (lmdatoset.count(nplutmap[mdato])-1)<<(PLUTW+8)
+                        nmaddrcnt += 1
+                    else:
+                        # PLUT addr already used by current gate, just tag with additional routing data
+                        nmlut[self.revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] |= 1<<(PLUTW+nroutmap[mdato])
+                else:  
+                    # we're getting a new PLUT addr, store in new MLUT, tag with
+                    # the initial routing data and advance the new MLUT address 
+                    lmdatoset.append(nplutmap[mdato])
+                    nmlut[nmaddrcnt] = nplutmap[mdato] | 1<<(PLUTW+nroutmap[mdato])
+                    nmaddrcnt += 1
+            # the current gate has been translated in the new MLUT, but we aren't done yet
+            # create a mapping of the old gate id (which has otherwise been perfectly valid)
+            # and how it connects to the translated MLUT data.
+            ngsetmlut[gido] = tuple(nmlut[nn] for nn in range(nmstartaddr,nmaddrcnt))
+            # we can also store info about how the gate bounds were remapped,
+            # but this will lose its utility soon and is only for inspection atm
+            glutrangereductionmap[gido] = ((gdato, (nmstartaddr, nmaddrcnt-1)))
+            glutrangeremap[gdato] = (nmstartaddr, nmaddrcnt-1)
+
+        # Now we've remapped all of the gates into the new format. However, there are likely redundancies for 
+        # gates with one or two parameters that change. For gates with a lot of identical data (such as Rz,
+        # where most of the data is zero except the frame rotation), this means we'll often be calling two words
+        # with one of them always the same. In this case, we still see a reduction in both PLUT and MLUT data,
+        # but if data differs on all parameters, then gates where only one or two parameters change will still
+        # be filling up the MLUT (as before). Since the new encoding cuts down on effective MLUT address width, 
+        # the repeated calls are worth handling. 
+        # 
+        # Here, we look for overlap in the set of PLUT addresses used by each gate, if there is a lot of overlap
+        # with other gates, then we can break the common data into a gatelet, and separately stream partial gates.
+        # This will also be quite useful in reducing the amount of data that needs to be transferred for direct
+        # streaming in the event that we have a certain parameter that is changing regularly. Instead of trying
+        # to dynamically reprogram, we can eliminate the additional storage from a smaller set of parameters
+        # by passing gate data in as a sideband, or just back-to-back with the single word. Streaming will
+        # also be more viable in this scheme since NOP data can be broadcasted to any/all channels with a single
+        # word.
+
+        # Get the set of MLUT data for each gate
+        S = tuple(ngsetmlut.values())
+        gateTransList = None
+        # optionally optimize MLUT storage by breaking gates into gatelets
+        # in this case, redundant calls to a portion of a gate (which might
+        # occur when gates containing a lot of unique data are called with
+        # one parameter change, such as phase) can be optimized in the MLUT
+        # by sequencing two gatelet identifiers. This will prevent the MLUT
+        # from filling up if single qubit gates 
+        new_gseq_list = []
+        if self.gatelet_optimization:
+            if self.validate_gatelet_optimization:
+                Sinit = S.copy()
+            gateTransList, S = self.optimizeRemap(
+                S, 
+                self.gatelet_opt_fitness_target, 
+                maxiter=self.max_gatelet_opt_iterations,
+                smartoptim=self.gatelet_optimization == GateletOptimizationType.OptimizeIfNecessary
+            )
+            if self.validate_gatelet_optimization:
+                if not self.verifyRemap(Sinit,S,gateTransList):
+                    raise CircuitCompilerException("gatelet optimization does not yield expected results")
+            for oldgid in gseq:
+                if oldgid & (1<<ANCILLA_COMPILER_TAG_BIT):
+                    raise CircuitCompilerException("gatelet optimization not yet supported with branching")
+                else:
+                    new_gseq_list.extend(gateTransList[oldgid])
+            iteritem = enumerate(S)
+        else:
+            new_gseq_list = gseq
+            iteritem = enumerate(S)
+
+        glutfin = dict()
+        mlutfin = dict()
+        plutfin = tuple(nplutset.values())
+
+        maddrctr = 0
+        for gid, gdat in iteritem:
+            maddrstart = maddrctr
+            for maddr in gdat:
+                mlutfin[maddrctr] = maddr
+                maddrctr += 1
+            glutfin[gid] = (maddrstart, maddrctr-1)
+        for gid in glut.keys():
+            if gid & (1<<ANCILLA_COMPILER_TAG_BIT):
+                glutfin[gid] = glutrangeremap[glut[gid]]
+
+        # check MLUT packing, this does not involve gatelet optimization, but
+        # trying to keep settings to a minimum
+        if self.validate_gatelet_optimization:
+            oldlist = [[] for _ in range(8)]
+            newlist = [[] for _ in range(8)]
+            for oldgid in gseq:
+                start, stop = glut[oldgid]
+                for mmm in range(start,stop+1):
+                    mdat = mlut[mmm]
+                    pdat = plut[mdat]
+                    tind= (bytes_to_int(pdat)>>MODTYPE_LSB)&0b111
+                    oldlist[tind].append(pdat)
+            for newgid in new_gseq_list:
+                start, stop = glutfin[newgid]
+                for mmm in range(start,stop+1):
+                    mdat = mlutfin[mmm]
+                    addr = mdat & ((1<<PLUTW)-1)
+                    rout = mdat >> PLUTW
+                    pdat = plutfin[addr]
+                    for n in range(8):
+                        if (rout>>n)&1:
+                            newlist[n].append(int_to_bytes(bytes_to_int(pdat)|(n<<MODTYPE_LSB)))
+            for n in range(8):
+                if not all(ol == ne for ol,ne in zip(oldlist[n], newlist[n])):
+                    logging.getLogger(__name__).error(f"packed representation doesn't match on channel {n}")
+                    for ol,ne in zip(oldlist[n], newlist[n]):
+                        logging.getLogger(__name__).debug(f"ORIGINAL: {bytes_to_int(ol):064x} PACKED: {bytes_to_int(ne):064x}")
+
+        logging.getLogger(__name__).debug(f"FINAL LENGTHS: ch{chidx}")
+        logging.getLogger(__name__).debug(f" GLUT: was {len(glut)} now {len(glutfin)} reduction {len(glutfin)/len(glut)}")
+        logging.getLogger(__name__).debug(f" MLUT: was {len(mlut)} now {len(mlutfin)} reduction {len(mlutfin)/len(mlut)}")
+        logging.getLogger(__name__).debug(f" pLUT: was {len(plut)} now {len(plutfin)} reduction {len(plutfin)/len(plut)}")
+
+        return glutfin, mlutfin, plutfin, new_gseq_list, (len(glut), len(mlut), len(plut)), (len(glutfin), len(mlutfin), len(plutfin))
+
 
     def generate_programming_data(self):
         """Convert the LUT programming IR representations to bytecode"""
@@ -644,9 +992,10 @@ class CircuitCompiler(CircuitConstructor):
                 board_programming_data = list()
                 board_sequence_data = list()
                 for bindata in zip_longest(
-                        (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                    (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
                     for ch in range(self.channel_num)
-                    if (1 << ch) & channel_mask), fillvalue=b''
+                    if (1 << ch) & channel_mask),
+                    fillvalue=b""
                 ):
                     board_programming_data.extend(bindata[0])
                 for bindata in zip_longest(
@@ -654,7 +1003,8 @@ class CircuitCompiler(CircuitConstructor):
                         self.GSEQ_bin[ch]
                         for ch in range(self.channel_num)
                         if (1 << ch) & channel_mask
-                    ), fillvalue=b''
+                    ),
+                    fillvalue=b""
                 ):
                     if bindata:
                         board_sequence_data.extend(bindata)

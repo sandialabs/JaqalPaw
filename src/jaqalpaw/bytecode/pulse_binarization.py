@@ -11,8 +11,11 @@ from .binary_conversion import (
 from .encoding_parameters import (
     MAXLEN,
     DMA_MUX_OFFSET_LOC,
+    MODTYPE_LSB_LOC,
     OUTPUT_EN_LSB_LOC,
     FRQ_FB_EN_LSB_LOC,
+    SPLSHIFT_LSB_LOC,
+    VERSION,
     WAIT_TRIG_LSB_LOC,
     CLR_FRAME_LSB_LOC,
     APPLY_EOF_LSB_LOC,
@@ -62,10 +65,13 @@ def apply_metadata(
     """Apply all metadata bits based on input flags, for splines, certain metadata bits are applied only
     with the first pulse such as waittrig, and rst_frame_mask"""
     num_padbytes = MAXLEN - len(bytelist)
-    metadata = shift_len << (num_padbytes * 8 - 8)
+    metadata = shift_len << SPLSHIFT_LSB_LOC
     if bypass:
         metadata |= 7 << (num_padbytes * 8 - 11)
-    channel_mux = channel << DMA_MUX_OFFSET_LOC
+    if VERSION==2:
+        channel_mux = 1<<channel << DMA_MUX_OFFSET_LOC
+    else:
+        channel_mux = channel << DMA_MUX_OFFSET_LOC
     metadata |= channel_mux
     output_en = 0
     fb_enable = 0
@@ -97,7 +103,10 @@ def apply_metadata(
         else:  # normal parameters
             sync = 1 << SYNC_FLAG_LSB_LOC if (sync_mask & tone_mask) else 0
         metadata |= waitbit | sync | clr_frame | apply_at_eof
-    modbyte = int(np.log2(modtype)) << (num_padbytes * 8 - 3)
+    if VERSION == 2:
+        modbyte = modtype << MODTYPE_LSB_LOC
+    else:
+        modbyte = int(np.log2(modtype)) << (num_padbytes * 8 - 3)
     metadata |= modbyte
     padbytes = convert_to_bytes(metadata, bytenum=num_padbytes, signed=False)
     return bytelist + padbytes
