@@ -12,8 +12,8 @@ MAXLEN = 256 // 8  # Number of bytes in a single transfer
 # the read address size (GLUTW) is thus smaller than the write address
 # size (GPRGW) used to program the GLUT
 GPRGW = 12  # Gate LUT write address width
-GLUTW = 9  # Gate LUT read address width
-SLUTW = 12  # Sequence LUT address width
+GLUTW = 11  # Gate LUT read address width
+SLUTW = 14  # Sequence LUT address width
 PLUTW = 12  # Pulse LUT address width
 
 # Ancilla readout extends the address space for readout from the GLUT.

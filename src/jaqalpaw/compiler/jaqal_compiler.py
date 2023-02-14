@@ -73,6 +73,7 @@ class CircuitCompiler(CircuitConstructor):
         if slice_list is None:
             self.import_gate_pulses()
         self.cclist = []
+        self.flattened_slice_list = None
 
     def set_global_delay(self, global_delay=None):
         if global_delay is None:
@@ -109,6 +110,23 @@ class CircuitCompiler(CircuitConstructor):
             else:
                 appendto.append(s)
 
+    def recursive_append(self, slices, appendto, flattened_list=None):
+        """Walk nested lists but don't expand loops"""
+        if flattened_list is None:
+            flattened_list = []
+            if self.flattened_slice_list is None:
+                self.flattened_slice_list = flattened_list
+        for s in slices:
+            if isinstance(s, Loop):
+                for _ in range(s.repeats):
+                    self.recursive_append(s, appendto, flattened_list)
+            elif isinstance(s, list):
+                self.recursive_append(s, appendto, flattened_list)
+            else:
+                appendto.append(s)
+                flattened_list.append(s)
+        return flattened_list
+
     def binarize_circuit(self, bypass=False):
         """Generate binary representation of all PulseData objects.
         Used primarily"""
@@ -132,11 +150,11 @@ class CircuitCompiler(CircuitConstructor):
         Primarily, this function serves to match AOM turn on times in counter-propagating
         configurations, where the AOMs and associated electronics might not be matched.
         However, this function is designed to support independent delays for each channel."""
-        if delay_settings is None:
-            return
         if circ_main is None:
             circ_main = GateSlice(num_channels=self.channel_num)
-            self.recursive_append(self.slice_list, circ_main)
+            self.flattened_slice_list = self.recursive_append(self.slice_list, circ_main)
+        if delay_settings is None:
+            return
         for ch, pd_list in circ_main.channel_data.items():
             for pd in pd_list:
                 if pd.waittrig:
@@ -431,6 +449,8 @@ class CircuitCompiler(CircuitConstructor):
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
+        #for k in self.PLUT_data:
+            #print(f"Channel {k}, len {len(self.PLUT_data[k])}")
 
     def generate_programming_data(self):
         """Convert the LUT programming IR representations to bytecode"""
@@ -480,7 +500,7 @@ class CircuitCompiler(CircuitConstructor):
                         break
             if errg:
                 for i, gid in enumerate(self.gate_sequence_ids[ch]):
-                    if gid == bgid:
+                    if gid == errg:
                         inds = i
                         badinds.append(inds)
                         break
@@ -523,48 +543,25 @@ class CircuitCompiler(CircuitConstructor):
                 pd_override_dict=self.pd_override_dict,
             )
             self.apply_delays(self.delay_settings)
+        if self.flattened_slice_list is None:
+            self.flattened_slice_list = self.slice_list
         self.extract_gates()
         self.generate_lookup_tables()
         gpres = self.generate_programming_data()
         slice_ind = None
         if gpres:
             slice_ind = min(gpres)
-            if False:
-                valid_si = False
-                while not valid_si:
-                    # this loop provides additional safety against fetching the wrong index
-                    # Hopefully the more accurate length comparison against slice_list will render the loop moot
-                    if slice_ind > len(self.slice_list)//2:
-                        start_si = len(self.slice_list)//2
-                    else:
-                        start_si = max(slice_ind-10, slice_ind//2)
-                    dur_list = [self.get_slice_duration(s) for s in reversed(self.slice_list[start_si:slice_ind])]
-                    slice_ind -= dur_list.index(max(dur_list))
-                    cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
-                    # The rest of the loop is for index checking, iff the loop is removed the above lines should
-                    # remain, but the rest of the body of the while loop after this comment can be deleted.
-                    cc1.extract_gates()
-                    cc1.generate_lookup_tables()
-                    cc1gpres = cc1.generate_programming_data()
-                    if cc1gpres:
-                        print(f"cc1gpres is {cc1gpres}")
-                        if min(cc1gpres) < slice_ind:
-                            slice_ind = min(cc1gpres)
-                        else:
-                            slice_ind -= 1
-                        print(f"slice_ind now {slice_ind}")
-                    else:
-                        valid_si = True
+            # Find the longest gate within a reasonable range to inject
+            # new programming data in order to prevent FIFO underflows
+            if slice_ind > len(self.flattened_slice_list) // 2:
+                start_si = len(self.flattened_slice_list) // 2
             else:
-                if slice_ind > len(self.slice_list) // 2:
-                    start_si = len(self.slice_list) // 2
-                else:
-                    start_si = max(slice_ind - 10, slice_ind // 2)
-                dur_list = [self.get_slice_duration(s) for s in reversed(self.slice_list[start_si:slice_ind])]
-                slice_ind -= dur_list.index(max(dur_list))
-                cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[:slice_ind])
+                start_si = max(slice_ind - 10, slice_ind // 2)
+            dur_list = [self.get_slice_duration(s) for s in reversed(self.flattened_slice_list[start_si:slice_ind])]
+            slice_ind -= dur_list.index(max(dur_list))
+            cc1 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.flattened_slice_list[:slice_ind])
             self.cclist.append(cc1)
-            cc2 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.slice_list[slice_ind:])
+            cc2 = CircuitCompiler(num_channels=self.channel_num, slice_list=self.flattened_slice_list[slice_ind:])
             self.cclist.append(cc2)
         self.compiled = True
         return slice_ind, None, None
@@ -573,7 +570,11 @@ class CircuitCompiler(CircuitConstructor):
         if isinstance(s, GateSlice):
             return s.total_duration()
         else:
-            return sum(map(self.get_slice_duration, s))
+            try:
+                return sum(map(self.get_slice_duration, s))
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Unable to get slice duration: {e}")
+                return 0
 
     def last_packet_pulse_data(self, ch):
         return [PulseData(ch, 3e-7, waittrig=False), PulseData(ch, 3e-7, waittrig=True)]
@@ -623,9 +624,9 @@ class CircuitCompiler(CircuitConstructor):
                     board_programming_data = list()
                     board_sequence_data = list()
                     for bindata in zip_longest(
-                        self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                            (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
                         for ch in range(bbind, min(bbind + 8, self.channel_num))
-                        if (1 << ch) & channel_mask
+                        if (1 << ch) & channel_mask), fillvalue=b''
                     ):
                         board_programming_data.extend(bindata[0])
                     for bindata in zip_longest(
@@ -633,7 +634,7 @@ class CircuitCompiler(CircuitConstructor):
                             self.GSEQ_bin[ch]
                             for ch in range(bbind, min(bbind + 8, self.channel_num))
                             if (1 << ch) & channel_mask
-                        )
+                        ), fillvalue=b''
                     ):
                         if bindata:
                             board_sequence_data.extend(bindata)
@@ -643,9 +644,9 @@ class CircuitCompiler(CircuitConstructor):
                 board_programming_data = list()
                 board_sequence_data = list()
                 for bindata in zip_longest(
-                    self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                        (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
                     for ch in range(self.channel_num)
-                    if (1 << ch) & channel_mask
+                    if (1 << ch) & channel_mask), fillvalue=b''
                 ):
                     board_programming_data.extend(bindata[0])
                 for bindata in zip_longest(
@@ -653,7 +654,7 @@ class CircuitCompiler(CircuitConstructor):
                         self.GSEQ_bin[ch]
                         for ch in range(self.channel_num)
                         if (1 << ch) & channel_mask
-                    )
+                    ), fillvalue=b''
                 ):
                     if bindata:
                         board_sequence_data.extend(bindata)
@@ -694,6 +695,7 @@ class CircuitCompiler(CircuitConstructor):
                 self.channel_num
             )
         gslice = populate_gate_slice(gate_data, self.channel_num)
+        self.apply_delays(self.delay_settings, circ_main=gslice)
         for ch, gsdata in gslice.channel_data.items():
             prep_hash = hash(tuple(gsdata))
             self.prepare_all_hashes[ch] = prep_hash
@@ -753,7 +755,7 @@ class CircuitCompiler(CircuitConstructor):
                         partial_GSEQ_bin[ch]
                         for ch in range(bbind, min(bbind + 8, self.channel_num))
                         if (1 << ch) & channel_mask
-                    )
+                    ), fillvalue=b''
                 ):
                     if bindata:
                         board_sequence_data.extend(bindata)
@@ -771,7 +773,7 @@ class CircuitCompiler(CircuitConstructor):
                     partial_GSEQ_bin[ch]
                     for ch in range(self.channel_num)
                     if (1 << ch) & channel_mask
-                )
+                ), fillvalue=b''
             ):
                 if bindata:
                     board_sequence_data.extend(bindata)
@@ -807,9 +809,9 @@ class CircuitCompiler(CircuitConstructor):
                 board_programming_data = list()
                 board_sequence_data = list()
                 for bindata in zip_longest(
-                        self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                        (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
                         for ch in range(bbind, min(bbind + 8, self.channel_num))
-                        if (1 << ch) & channel_mask
+                        if (1 << ch) & channel_mask), fillvalue=b''
                 ):
                     board_programming_data.extend(bindata[0])
                 for subcircuit_index in range(len(subcircuit_GSEQ_bin[0])):
@@ -819,7 +821,7 @@ class CircuitCompiler(CircuitConstructor):
                                 subcircuit_GSEQ_bin[ch][subcircuit_index]
                                 for ch in range(bbind, min(bbind + 8, self.channel_num))
                                 if (1 << ch) & channel_mask
-                            )
+                            ), fillvalue=b''
                     ):
                         if bindata:
                             subcirc_index_board_data.extend(bindata)
@@ -830,9 +832,9 @@ class CircuitCompiler(CircuitConstructor):
             board_programming_data = list()
             board_sequence_data = list()
             for bindata in zip_longest(
-                    self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
+                    (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
                     for ch in range(self.channel_num)
-                    if (1 << ch) & channel_mask
+                    if (1 << ch) & channel_mask), fillvalue=b''
             ):
                 board_programming_data.extend(bindata[0])
             for subcircuit_index in range(len(subcircuit_GSEQ_bin[0])):
@@ -842,7 +844,7 @@ class CircuitCompiler(CircuitConstructor):
                             subcircuit_GSEQ_bin[ch][subcircuit_index]
                             for ch in range(self.channel_num)
                             if (1 << ch) & channel_mask
-                        )
+                        ), fillvalue=b''
                 ):
                     if bindata:
                         subcirc_index_board_data.extend(bindata)

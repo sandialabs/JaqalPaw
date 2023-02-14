@@ -64,7 +64,7 @@ def program_PLUT(lut, ch=0):
     plut_PROG_list = []
     for data, addr in lut.items():
         if address_is_invalid(addr, PLUTW):
-            return plut_PROG_list, data
+            return plut_PROG_list, addr
             raise CircuitCompilerException(
                 f"PLUT programming error, address {addr} ({bin(addr)}) "
                 f"exceeds maximum width of {PLUTW}"
