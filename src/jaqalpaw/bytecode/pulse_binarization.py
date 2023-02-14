@@ -14,6 +14,7 @@ from .encoding_parameters import (
     MODTYPE_LSB_LOC,
     OUTPUT_EN_LSB_LOC,
     FRQ_FB_EN_LSB_LOC,
+    PYSPLINE,
     SPLSHIFT_LSB_LOC,
     VERSION,
     WAIT_TRIG_LSB_LOC,
@@ -38,6 +39,8 @@ from jaqalpaw.utilities.datatypes import Discrete, Mixed
 from itertools import zip_longest
 
 from .spline_mapping import cs_mapper_int, cs_mapper_int_auto_shift
+if not PYSPLINE:
+    from jaqalpaw.spline.spline_fitting import fit_spline_distribute
 
 # ######################################################## #
 # ------------------ PulseData Encoding ------------------ #
@@ -143,7 +146,7 @@ def generate_bytes(
         v1 = int(coeffs[2, n])
         v2 = int(coeffs[1, n])
         v3 = int(coeffs[0, n])
-        v4 = int(wait) if not isinstance(wait, list) else int(wait[n])
+        v4 = int(wait) if not hasattr(wait, '__len__') else int(wait[n])
         shift_bits = shift_len if not isinstance(shift_len, list) else shift_len[n]
         bytelist = map_to_bytes([v0, v1, v2, v3, v4])
         fullbytes = apply_metadata(
@@ -242,7 +245,7 @@ def generate_spline_bytes(
 ):
     """Generates spline coefficients, remaps them for a pdq spline and gets the corresponding byte data."""
     if pulse_mode:
-        outbytes, final_byte_list = generate_pulse_bytes(
+        _, final_byte_list = generate_pulse_bytes(
             ys,
             xs[:],
             nsteps,
@@ -261,23 +264,31 @@ def generate_spline_bytes(
             channel=channel,
         )
     else:
-        cs = CubicSpline(
-            xs, ys, bc_type=((2, 0.0), (2, 0.0))
-        )  # set for a natural spline
         if modtype in (PHSMOD0, PHSMOD1, FRMROT0, FRMROT1):
             apply_phase_mask = True
         else:
             apply_phase_mask = False
-        if shift_len < 0:
-            modified_coeff_table, shift_len_fin = cs_mapper_int_auto_shift(
-                cs.c, nsteps=nsteps, apply_phase_mask=apply_phase_mask
-            )
+        if PYSPLINE:
+            dur = nsteps
+            n_points = len(xs)
+            raw_cycles = np.round(np.linspace(0, dur, n_points))
+            step_list = list(np.diff(raw_cycles))
+            nsteps = step_list
+            cs = CubicSpline(
+                xs, ys, bc_type=((2, 0.0), (2, 0.0))
+            )  # set for a natural spline
+            if shift_len < 0:
+                modified_coeff_table, shift_len_fin = cs_mapper_int_auto_shift(
+                    cs.c, nsteps=nsteps, apply_phase_mask=apply_phase_mask
+                )
+            else:
+                shift_len_fin = shift_len
+                modified_coeff_table = cs_mapper_int(
+                    cs.c, nsteps=nsteps, shift_len=shift_len
+                )
         else:
-            shift_len_fin = shift_len
-            modified_coeff_table = cs_mapper_int(
-                cs.c, nsteps=nsteps, shift_len=shift_len
-            )
-        outbytes, final_byte_list = generate_bytes(
+            modified_coeff_table, shift_len_fin, nsteps = fit_spline_distribute(ys, nsteps, apply_phase_mask)
+        _, final_byte_list = generate_bytes(
             modified_coeff_table,
             xs[1:],
             nsteps,
@@ -399,34 +410,29 @@ def binarize_parameter(
             )
         return bytelist
     if n_points > 1:
-        pulsemode = isinstance(data, Discrete)
-
-        # xdata needs to have unit spacing to work well with the
-        # pdq spline mapping even when data is nonuniform
-        xdata = [i for i in range(n_points)]
-        ydata = list(
-            map(
-                mpdict[modt]["convertFunc"]["discrete" if pulsemode else "spline"],
-                data,
+        if isinstance(data, Discrete):
+            # xdata needs to have unit spacing to work well with the
+            # pdq spline mapping even when data is nonuniform
+            xdata = [i for i in range(n_points)]
+            ydata = list(
+                map(
+                    mpdict[modt]["convertFunc"]["discrete"],
+                    data,
+                )
             )
-        )
+            # raw_cycles specifies the actual time grid, distributing
+            # rounding errors must have one more point for pulse mode
+            # step_list is the time per point on the non-uniform grid
+            raw_cycles = np.round(np.linspace(0, dur, n_points + 1))
+            step_list = list(np.diff(raw_cycles))
+            if min(step_list) < 4:
+                raise Exception("Step size needs to be at least 4 clock cycles, or 10 ns!")
 
-        # raw_cycles specifies the actual time grid, distributing
-        # rounding errors must have one more point for pulse mode
-        # step_list is the time per point on the non-uniform grid
-        raw_cycles = np.round(np.linspace(0, dur, n_points + 1 * pulsemode))
-        step_list = list(np.diff(raw_cycles))
-        if min(step_list) < 4:
-            raise Exception("Step size needs to be at least 4 clock cycles, or 10 ns!")
-
-        bytelist.extend(
-            generate_spline_bytes(
-                np.array(xdata),
+            _, final_byte_list = generate_pulse_bytes(
                 np.array(ydata),
+                np.array(xdata),
                 step_list,
-                pulse_mode=pulsemode,
                 modtype=mpdict[modt]["modtype"],
-                shift_len=-1,
                 waittrig=waittrig,
                 bypass=bypass,
                 sync_mask=sync_mask,
@@ -440,7 +446,41 @@ def binarize_parameter(
                 inv_frame1_mask=inv_frame1_mask,
                 channel=DDS,
             )
-        )
+            bytelist.extend(final_byte_list)
+        else:
+            # xdata needs to have unit spacing to work well with the
+            # pdq spline mapping even when data is nonuniform
+            xdata = [i for i in range(n_points)]
+            ydata = list(
+                map(
+                    mpdict[modt]["convertFunc"]["spline"],
+                    data,
+                )
+            )
+
+            step_list=dur
+            bytelist.extend(
+                generate_spline_bytes(
+                    np.array(xdata),
+                    np.array(ydata),
+                    step_list,
+                    pulse_mode=0,
+                    modtype=mpdict[modt]["modtype"],
+                    shift_len=-1,
+                    waittrig=waittrig,
+                    bypass=bypass,
+                    sync_mask=sync_mask,
+                    enable_mask=enable_mask,
+                    fb_enable_mask=fb_enable_mask,
+                    apply_at_eof_mask=apply_at_eof_mask,
+                    rst_frame_mask=rst_frame_mask,
+                    fwd_frame0_mask=fwd_frame0_mask,
+                    fwd_frame1_mask=fwd_frame1_mask,
+                    inv_frame0_mask=inv_frame0_mask,
+                    inv_frame1_mask=inv_frame1_mask,
+                    channel=DDS,
+                )
+            )
     else:
         lbytes, _ = generate_single_pulse_bytes(
             mpdict[modt]["convertFunc"]["discrete"](delist(data)),

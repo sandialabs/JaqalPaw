@@ -6,6 +6,9 @@ if VERSION == 2:
     # needed for updated metadata mapping to work with HW
     ENABLE_MLUT_PACKING = True 
 
+# use scipy.interpolate.CubicSpline instead of custom library
+PYSPLINE = True
+
 ENDIANNESS = "little"
 MAXLEN = 256 // 8  # Number of bytes in a single transfer
 
@@ -19,9 +22,10 @@ MAXLEN = 256 // 8  # Number of bytes in a single transfer
 # size (GPRGW) used to program the GLUT
 GPRGW = 12  # Gate LUT write address width
 GLUTW = 11  # Gate LUT read address width
-SLUTW = 13  # Sequence LUT address width
+SLUTW = 14  # Sequence LUT address width
 PLUTW = 12  # Pulse LUT address width
 if ENABLE_MLUT_PACKING:
+    SLUTW = 13  # Sequence LUT address width
     SLUTDW = 20
 else:
     SLUTDW = PLUTW
