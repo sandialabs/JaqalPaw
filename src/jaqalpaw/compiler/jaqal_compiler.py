@@ -63,7 +63,7 @@ class CircuitCompiler(CircuitConstructor):
         self.file = file
         self.code_literal = code_literal
         self.gatelet_optimization = gatelet_optimization
-        self.max_gatelet_opt_iterations = 100
+        self.max_gatelet_opt_iterations = 10
         self.gatelet_opt_fitness_target = 0
         self.validate_gatelet_optimization = False  # enable for debugging
         self.binary_data = defaultdict(list)
@@ -187,6 +187,62 @@ class CircuitCompiler(CircuitConstructor):
         bytelist = []
         for ch in channels:
             bytelist.extend(self.binary_data[ch])
+        sorted_bytelist = timesort_bytelist(flatten(bytelist))
+        return sorted_bytelist
+
+    def subcircuit_streaming_data(self, channel_mask=None):
+        """Generate the binary data for direct streaming (bypass mode), broken into subcircuits"""
+        streaming_bytelist = self.streaming_data(channel_mask)
+        prepare_all_sbytes = self.streaming_prepare_all(channel_mask)
+        subcircuit_stream_data = [[streaming_bytelist[0]]]
+        streaming_bytelist = streaming_bytelist[1:]
+        for _ in range(1000000):
+            if (prepare_all_sbytes[0] in streaming_bytelist[1:]):
+                startind = streaming_bytelist[1:].index(prepare_all_sbytes[0])+1
+                stopind = startind + len(prepare_all_sbytes)
+                if streaming_bytelist[startind:stopind] == prepare_all_sbytes:
+                    subcircuit_stream_data[-1].extend(streaming_bytelist[:startind])
+                    streaming_bytelist = streaming_bytelist[startind:]
+                    subcircuit_stream_data.append([])
+                else:
+                    subcircuit_stream_data[-1].extend(streaming_bytelist[:startind])
+                    streaming_bytelist = streaming_bytelist[startind+1:]
+            else:
+                break
+        else:
+            raise CircuitCompilerException("error trying to split up subcircuits in streaming data, "
+                                           "increase loop count to handle more than 1e6 subcircuits")
+        subcircuit_stream_data[-1].extend(streaming_bytelist)
+        return subcircuit_stream_data
+
+    def streaming_prepare_all(self, channels=None):
+        """Generate the binary data for direct streaming (bypass mode) prepare_all gate"""
+        prepare_all_prefix = "gate_"
+        if not hasattr(self.pulse_definition, prepare_all_prefix + self.initialize_gate_name):
+            prepare_all_prefix = "macro_"
+            if not hasattr(self.pulse_definition, prepare_all_prefix + self.initialize_gate_name):
+                raise CircuitCompilerException(
+                f"Pulse definition has no gate named gate_{self.initialize_gate_name}"
+            )
+        if prepare_all_prefix == "macro_":
+            gate_data = getattr(self.pulse_definition,
+                                prepare_all_prefix + self.initialize_gate_name
+                               )(self.channel_num)[0]
+        else:
+            gate_data = getattr(self.pulse_definition,
+                                prepare_all_prefix + self.initialize_gate_name
+                               )(self.channel_num)
+        gslice = populate_gate_slice(gate_data, self.channel_num)
+        self.apply_delays(self.delay_settings, circ_main=gslice)
+        self.prepbin = defaultdict(list)
+        for ch, pd_list in gslice.channel_data.items():
+            for pd in pd_list:
+                self.prepbin[ch].append(pd.binarize(bypass=True))
+        if channels is None:
+            channels = list(range(self.channel_num))
+        bytelist = []
+        for ch in channels:
+            bytelist.extend(self.prepbin[ch])
         sorted_bytelist = timesort_bytelist(flatten(bytelist))
         return sorted_bytelist
 
@@ -469,18 +525,24 @@ class CircuitCompiler(CircuitConstructor):
                         gind += 1
                 startind += maxlen
         if ENABLE_MLUT_PACKING:
+            self.GLUT_data_unpacked = self.GLUT_data
+            self.PLUT_data_unpacked = self.PLUT_data
+            self.MMAP_data_unpacked = self.MMAP_data
+            self.gate_sequence_ids_unpacked = self.gate_sequence_ids
             cglut = defaultdict(dict)
             cmlut = defaultdict(dict)
             cplut = defaultdict(list)
             gluttot,mluttot,pluttot = 0,0,0
             ngluttot,nmluttot,npluttot = 0,0,0
             cgseq = defaultdict(list)
-            for n in range(8):
-                _cglut, _cmlut, _cplut, _cgseq, bls, als = self.recast_lookup_table(self.GLUT_data[n], self.MMAP_data[n], self.PLUT_data[n], self.gate_sequence_ids[n], chidx=n)
+            self.gateTransList = []
+            for n in range(self.channel_num):
+                _cglut, _cmlut, _cplut, _cgseq, gatetrans, bls, als = self.recast_lookup_table(self.GLUT_data[n], self.MMAP_data[n], self.PLUT_data[n], self.gate_sequence_ids[n], chidx=n)
                 cglut[n].update(_cglut)
                 cmlut[n].update(_cmlut)
                 cplut[n].extend(_cplut)
                 cgseq[n].extend(_cgseq)
+                self.gateTransList.append(gatetrans)
                 gluttot += bls[0]
                 mluttot += bls[1]
                 pluttot += bls[2]
@@ -538,7 +600,7 @@ class CircuitCompiler(CircuitConstructor):
         improved = True
         gilist = tuple([n] for n in range(len(S)))
         if smartoptim:
-            maxiter = 1000
+            maxiter = 10
             optimbound = 0
         for _ in range(maxiter):
             if (smartoptim  # stop optimization if data fits in LUTs
@@ -643,13 +705,13 @@ class CircuitCompiler(CircuitConstructor):
         # data. MLUT filling is still a problem though, so by giving up some
         # data bits in the packed representation at the fw level we can tag the
         # MLUT data with a one-hot routing mask. Before the MLUT and GLUT would
-        # encode the above NOP as 
+        # encode the above NOP as
         #     MLUT: {0: 0, 1: 1, 2: 2, ...}         GLUT: {0: (0,7)}
         # Now, the encoding will be
         #     MLUT: {0: (0b11111111, 0)}            GLUT: {0: (0,0)}
         # and an Rz gate would be
         #     MLUT: {0: (0b10111111, 0), 1: (0b01000000, 1) }  GLUT: {0: (0,1)}
-        # Thus the MLUT data size increases from 12 to 20 bits and the encoding 
+        # Thus the MLUT data size increases from 12 to 20 bits and the encoding
         # is N-hot, the number of entries will differ from before.
 
         nmaddrcnt = 0
@@ -685,9 +747,9 @@ class CircuitCompiler(CircuitConstructor):
                     else:
                         # PLUT addr already used by current gate, just tag with additional routing data
                         nmlut[self.revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] |= 1<<(PLUTW+nroutmap[mdato])
-                else:  
+                else:
                     # we're getting a new PLUT addr, store in new MLUT, tag with
-                    # the initial routing data and advance the new MLUT address 
+                    # the initial routing data and advance the new MLUT address
                     lmdatoset.append(nplutmap[mdato])
                     nmlut[nmaddrcnt] = nplutmap[mdato] | 1<<(PLUTW+nroutmap[mdato])
                     nmaddrcnt += 1
@@ -700,14 +762,14 @@ class CircuitCompiler(CircuitConstructor):
             glutrangereductionmap[gido] = ((gdato, (nmstartaddr, nmaddrcnt-1)))
             glutrangeremap[gdato] = (nmstartaddr, nmaddrcnt-1)
 
-        # Now we've remapped all of the gates into the new format. However, there are likely redundancies for 
+        # Now we've remapped all of the gates into the new format. However, there are likely redundancies for
         # gates with one or two parameters that change. For gates with a lot of identical data (such as Rz,
         # where most of the data is zero except the frame rotation), this means we'll often be calling two words
         # with one of them always the same. In this case, we still see a reduction in both PLUT and MLUT data,
         # but if data differs on all parameters, then gates where only one or two parameters change will still
-        # be filling up the MLUT (as before). Since the new encoding cuts down on effective MLUT address width, 
-        # the repeated calls are worth handling. 
-        # 
+        # be filling up the MLUT (as before). Since the new encoding cuts down on effective MLUT address width,
+        # the repeated calls are worth handling.
+        #
         # Here, we look for overlap in the set of PLUT addresses used by each gate, if there is a lot of overlap
         # with other gates, then we can break the common data into a gatelet, and separately stream partial gates.
         # This will also be quite useful in reducing the amount of data that needs to be transferred for direct
@@ -725,14 +787,16 @@ class CircuitCompiler(CircuitConstructor):
         # occur when gates containing a lot of unique data are called with
         # one parameter change, such as phase) can be optimized in the MLUT
         # by sequencing two gatelet identifiers. This will prevent the MLUT
-        # from filling up if single qubit gates 
+        # from filling up if single qubit gates
         new_gseq_list = []
-        if self.gatelet_optimization:
+        if (self.gatelet_optimization > GateletOptimizationType.OptimizeIfNecessary
+            or (self.gatelet_optimization == GateletOptimizationType.OptimizeIfNecessary
+                and sum(map(len,S))>(1<<SLUTW))):
             if self.validate_gatelet_optimization:
                 Sinit = S.copy()
             gateTransList, S = self.optimizeRemap(
-                S, 
-                self.gatelet_opt_fitness_target, 
+                S,
+                self.gatelet_opt_fitness_target,
                 maxiter=self.max_gatelet_opt_iterations,
                 smartoptim=self.gatelet_optimization == GateletOptimizationType.OptimizeIfNecessary
             )
@@ -797,7 +861,7 @@ class CircuitCompiler(CircuitConstructor):
         logging.getLogger(__name__).debug(f" MLUT: was {len(mlut)} now {len(mlutfin)} reduction {len(mlutfin)/len(mlut)}")
         logging.getLogger(__name__).debug(f" pLUT: was {len(plut)} now {len(plutfin)} reduction {len(plutfin)/len(plut)}")
 
-        return glutfin, mlutfin, plutfin, new_gseq_list, (len(glut), len(mlut), len(plut)), (len(glutfin), len(mlutfin), len(plutfin))
+        return glutfin, mlutfin, plutfin, new_gseq_list, gateTransList, (len(glut), len(mlut), len(plut)), (len(glutfin), len(mlutfin), len(plutfin))
 
 
     def generate_programming_data(self):
@@ -1058,6 +1122,10 @@ class CircuitCompiler(CircuitConstructor):
                     f"Unable to find hash for {self.initialize_gate_name}"
                 )
             self.prepare_all_gids[ch] = gid
+        if ENABLE_MLUT_PACKING:
+            for ch in range(self.channel_num):
+                if self.gateTransList[ch] is not None:
+                    self.prepare_all_gids[ch] = self.gateTransList[ch][self.prepare_all_gids[ch]][0]
         return gslice
 
     def generate_gate_sequence_from_index(self, ind):
@@ -1161,7 +1229,8 @@ class CircuitCompiler(CircuitConstructor):
                 for bindata in zip_longest(
                         (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
                         for ch in range(bbind, min(bbind + 8, self.channel_num))
-                        if (1 << ch) & channel_mask), fillvalue=b''
+                        if (1 << ch) & channel_mask),
+                        fillvalue=b'',
                 ):
                     board_programming_data.extend(bindata[0])
                 for subcircuit_index in range(len(subcircuit_GSEQ_bin[0])):
@@ -1171,7 +1240,8 @@ class CircuitCompiler(CircuitConstructor):
                                 subcircuit_GSEQ_bin[ch][subcircuit_index]
                                 for ch in range(bbind, min(bbind + 8, self.channel_num))
                                 if (1 << ch) & channel_mask
-                            ), fillvalue=b''
+                            ),
+                            fillvalue=b'',
                     ):
                         if bindata:
                             subcirc_index_board_data.extend(bindata)
@@ -1184,7 +1254,8 @@ class CircuitCompiler(CircuitConstructor):
             for bindata in zip_longest(
                     (self.GLUT_bin[ch] + self.MMAP_bin[ch] + self.PLUT_bin[ch]
                     for ch in range(self.channel_num)
-                    if (1 << ch) & channel_mask), fillvalue=b''
+                    if (1 << ch) & channel_mask),
+                    fillvalue=b'',
             ):
                 board_programming_data.extend(bindata[0])
             for subcircuit_index in range(len(subcircuit_GSEQ_bin[0])):
@@ -1194,7 +1265,8 @@ class CircuitCompiler(CircuitConstructor):
                             subcircuit_GSEQ_bin[ch][subcircuit_index]
                             for ch in range(self.channel_num)
                             if (1 << ch) & channel_mask
-                        ), fillvalue=b''
+                        ),
+                        fillvalue=b'',
                 ):
                     if bindata:
                         subcirc_index_board_data.extend(bindata)

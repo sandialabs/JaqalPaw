@@ -86,7 +86,7 @@ def timesort_bytelist(bytelist):
 
 
 routemask = (((1<<8)-1)<<DMA_MUX_LSB)| (((1<<8)-1)<<MODTYPE_LSB)
-def unrouted_data(data, /, *, convert_to_int=False):
+def unrouted_data(data, *, convert_to_int=False):
     convert_to_bytes = False
     if isinstance(data, bytes):
         convert_to_bytes = False if convert_to_int else True
