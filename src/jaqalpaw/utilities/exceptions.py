@@ -8,3 +8,7 @@ class CollisionException(Exception):
 
 class CircuitCompilerException(Exception):
     pass
+
+
+class LUTOverflowException(Exception):
+    pass

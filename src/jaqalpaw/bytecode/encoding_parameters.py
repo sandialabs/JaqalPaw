@@ -12,6 +12,8 @@ PYSPLINE = True
 ENDIANNESS = "little"
 MAXLEN = 256 // 8  # Number of bytes in a single transfer
 
+CHANNELS_PER_BOARD = 8
+
 # LUT Address Widths
 # These values contain the number of bits used for an address for a
 # particular LUT. The address width is the same for reading and writing
