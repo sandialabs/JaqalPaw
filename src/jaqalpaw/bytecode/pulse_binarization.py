@@ -10,6 +10,7 @@ from .binary_conversion import (
 )
 from .encoding_parameters import (
     MAXLEN,
+    CHANNELS_PER_BOARD,
     DMA_MUX_OFFSET_LOC,
     MODTYPE_LSB_LOC,
     OUTPUT_EN_LSB_LOC,
@@ -72,7 +73,7 @@ def apply_metadata(
     if bypass:
         metadata |= 7 << (num_padbytes * 8 - 11)
     if VERSION==2:
-        channel_mux = 1<<channel << DMA_MUX_OFFSET_LOC
+        channel_mux = 1<< (channel%CHANNELS_PER_BOARD) << DMA_MUX_OFFSET_LOC
     else:
         channel_mux = channel << DMA_MUX_OFFSET_LOC
     metadata |= channel_mux

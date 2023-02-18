@@ -1,5 +1,6 @@
 from jaqalpaw.utilities.exceptions import CircuitCompilerException
 from jaqalpaw.bytecode.encoding_parameters import (
+    CHANNELS_PER_BOARD,
     DMA_MUX_LSB,
     PROGPLUT,
     PROGSLUT,
@@ -62,7 +63,7 @@ def generate_gate_addr_range_LUT(FullGateList):
 
 def channel_routing_data(ch):
     if VERSION == 2:
-        return 1<<(ch&PER_BOARD_CH_MASK)<<DMA_MUX_LSB
+        return 1<<((ch%CHANNELS_PER_BOARD)&PER_BOARD_CH_MASK)<<DMA_MUX_LSB
     return (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
 
 def program_PLUT(lut, ch=0):

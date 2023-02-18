@@ -35,6 +35,7 @@ from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
 
 flatten = lambda x: [y for l in x for y in l]
 group_adjacent = lambda a, k: zip(*([iter(a)] * k))
+tree = lambda: defaultdict(tree)
 
 # fmt: off
 # ######################################################## #
@@ -55,6 +56,7 @@ class LUTOverflowHandling(IntEnum):
     this is not assumed since the upload speed/approach may be impacted."""
     RaiseException = 0
     RecursiveCompilation = 1
+    StreamDataDirectly = 2
 
 
 class CircuitCompiler(CircuitConstructor):
@@ -207,7 +209,7 @@ class CircuitCompiler(CircuitConstructor):
         sorted_bytelist = []
         bytelist = []
         for bbind in range(self.num_boards):
-            for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num)):
+            for ch in range(bbind, min((bbind+1)*CHANNELS_PER_BOARD, self.channel_num)):
                 if (1<<ch) & channels:
                     bytelist.extend(self.binary_data[ch])
             sorted_bytelist.append(timesort_bytelist(flatten(bytelist)))
@@ -217,9 +219,10 @@ class CircuitCompiler(CircuitConstructor):
     def subcircuit_streaming_data(self, channel_mask=None):
         """Generate the binary data for direct streaming (bypass mode), broken into subcircuits"""
         streaming_bytelist_full = self.streaming_data(channel_mask)
-        prepare_all_sbytes = self.streaming_prepare_all(channel_mask)
         subcircuit_stream_data_full = []
         for bbind in range(self.num_boards):
+            prepare_all_sbytes = self.streaming_prepare_all(
+                    (channel_mask>>(bbind*CHANNELS_PER_BOARD))&((1<<CHANNELS_PER_BOARD)-1))
             streaming_bytelist = streaming_bytelist_full[bbind]
             subcircuit_stream_data = [[streaming_bytelist[0]]]
             streaming_bytelist = streaming_bytelist[1:]
@@ -835,22 +838,16 @@ class CircuitCompiler(CircuitConstructor):
             or (self.gatelet_optimization == GateletOptimizationType.OptimizeIfNecessary
                 and sum(map(len,S))>(1<<SLUTW))):
             if self.validate_gatelet_optimization:
-                Sinit = S.copy()
-            gateTransList, S = self.optimizeRemap(
-                S,
-                self.gatelet_opt_fitness_target,
-                maxiter=self.max_gatelet_opt_iterations,
-                smartoptim=self.gatelet_optimization == GateletOptimizationType.OptimizeIfNecessary
-            )
+                Sinit = S
+            nglutdist, gateTransList = distill_gatelets(ngsetmlut.copy(), 1<<SLUTW)
+            iteritem = nglutdist.items()
             if self.validate_gatelet_optimization:
-                if not self.verifyRemap(Sinit,S,gateTransList):
-                    raise CircuitCompilerException("gatelet optimization does not yield expected results")
+                verify_distillation(ngsetmlut,nglutdist,gateTransList)
             for oldgid in gseq:
                 if oldgid & (1<<ANCILLA_COMPILER_TAG_BIT):
                     raise CircuitCompilerException("gatelet optimization not yet supported with branching")
                 else:
                     new_gseq_list.extend(gateTransList[oldgid])
-            iteritem = enumerate(S)
         else:
             new_gseq_list = gseq
             iteritem = enumerate(S)
@@ -872,7 +869,7 @@ class CircuitCompiler(CircuitConstructor):
 
         # check MLUT packing, this does not involve gatelet optimization, but
         # trying to keep settings to a minimum
-        if self.validate_gatelet_optimization:
+        if self.validate_gatelet_optimization and False:
             oldlist = [[] for _ in range(self.channel_num)]
             newlist = [[] for _ in range(self.channel_num)]
             for oldgid in gseq:
@@ -1076,10 +1073,16 @@ class CircuitCompiler(CircuitConstructor):
         data by channel, where 0 prevents the data from being sent and the LSB
         corresponds to channel 0. If channel_mask is None, data is supplied for
         all channels up to self.channel_num"""
-        if not self.compiled:
-            self.compile()
         if channel_mask is None:
             channel_mask = (1 << self.channel_num) - 1
+        if not self.compiled:
+            try:
+                self.compile()
+            except LUTOverflowException as e:
+                if self.lut_overflow_handling == LUTOverflowHandling.StreamDataDirectly:
+                    logging.getLogger(__name__).info("couldn't fit data into LUTs, streaming directly")
+                    return [[] for _ in range(self.num_boards)], self.streaming_data(channel_mask)
+                raise e
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
         self.sequence_data = list()
@@ -1149,12 +1152,12 @@ class CircuitCompiler(CircuitConstructor):
         a lot of overlap, but might not have much impact when lots of unique
         data is used."""
         if VERSION == 2:
-            pvd = defaultdict(int)
             finalpbytes = []
             finalsbytes = []
             for n in range(self.num_boards):
                 newpbytes = []
                 newsbytes = []
+                pvd = defaultdict(int)
                 for pv in map(bytes_to_int, pbytes[n]):
                     pvm = pv & ((1<<DMA_MUX_LSB)-1)
                     pvr = pv >> DMA_MUX_LSB
@@ -1292,10 +1295,16 @@ class CircuitCompiler(CircuitConstructor):
         data by channel, where 0 prevents the data from being sent and the LSB
         corresponds to channel 0. If channel_mask is None, data is supplied for
         all channels up to self.channel_num"""
-        if not self.compiled:
-            self.compile()
         if channel_mask is None:
             channel_mask = (1 << self.channel_num) - 1
+        if not self.compiled:
+            try:
+                self.compile()
+            except LUTOverflowException as e:
+                if self.lut_overflow_handling == LUTOverflowHandling.StreamDataDirectly:
+                    logging.getLogger(__name__).info("couldn't fit data into LUTs, streaming directly")
+                    return [[] for _ in range(self.num_boards)], self.subcircuit_streaming_data(channel_mask)
+                raise e
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
         self.sequence_data = list()
@@ -1352,6 +1361,185 @@ class CircuitCompiler(CircuitConstructor):
             self.programming_data.append(board_programming_data)
             self.sequence_data.append(board_sequence_data)
         return self.programming_data, self.sequence_data
+
+
+def revindex(ll,val):
+    """Like list.index(val), but find the last index"""
+    for i,l in enumerate(reversed(ll)):
+        if l == val:
+            return len(ll)-i-1
+    return None
+
+
+def make_glut_tree(glutremap):
+    """Each gate comprises N MLUT data words that contain routing information
+       and PLUT addresses. Make a tree that the corresponds to the ordered MLUT
+       data where the root node is the first element."""
+    gluttree = tree()
+    for gid, maddrs in glutremap.items():
+        gt = gluttree
+        for i in maddrs:
+            gt = gt[i]
+        gt[-1] = gid
+    return gluttree
+
+
+def find_longest_root(dd,depth=0,vl=None):
+    """Walk the tree and look for nodes that have the largest product of
+    depth*breadth. In other words, use the tree to identify overlap in data
+    which affects the largest MLUT filling while maintaining order and repeated
+    entries (as opposed to a set-based approach). In this case we target
+    overlap for the beginning of each sequence."""
+    maxvl = []
+    if vl is None:
+        vl = []
+    maxv = depth*(len(dd.keys())-1)
+    maxk = vl
+    for k,v in dd.items():
+        if k > -1:
+            newd, kl = find_longest_root(dd[k],depth+1, vl+[k])
+            if newd > maxv:
+                maxv = newd
+                maxk = kl
+    return maxv, maxk
+
+
+def get_remap_candidates(dd, vl=None, limit=None):
+    """Given a subtree, return all valid children. Here we limit the gate id to
+    prevent optimization on generated gatelets since this starts to get
+    annoying with a recursive remap of gate ids."""
+    if vl is None:
+        vl = []
+    for k,v in dd.items():
+        if k != -1:
+            yield from get_remap_candidates(dd[k], (*vl,k), limit=limit)
+        else:
+            if vl:
+                if limit is not None and v>limit:
+                    continue
+                yield (vl, v)
+
+
+def optimluts(glut, glutmap=None, limit=None):
+    """Generate tree representations for gates run forward and reverse (the
+    latter is used to target gates that end with common data, but the rest of
+    the code handles ordering in one direction so we can handle the reverse
+    case at this level). Find the optical target gatelet and separate it from
+    the relevant gates."""
+    if glutmap is None:
+        glutmap = {i:(i,) for i in range(len(glut))}
+    glutr = {k:tuple(reversed(v)) for k,v in glut.items()}
+    tf = make_glut_tree(glut)
+    tfr = make_glut_tree(glutr)
+    maxv, maxk = find_longest_root(tf)
+    maxvr, maxkr = find_longest_root(tfr)
+    if maxvr > maxv:
+        return single_pass_distillation(glut, glutmap, tfr, maxkr, rev=True, limit=limit), maxvr
+    else:
+        return single_pass_distillation(glut, glutmap, tf, maxk, rev=False, limit=limit), maxv
+
+
+def single_pass_distillation(glut, glutmap, tf, maxk, rev=False, limit=None):
+    """Distill gates into gatelets, augment the gate table and generate a
+       translation dict for expanding gates into multiple gatelets. Order is
+       preserved and new gatelets are added to the end of the table."""
+    ttf = tf
+    for i in maxk:
+        ttf = ttf[i]
+    # check if gatelet exists (this might happen if it shows up multiple times
+    # in a gate, or at the beginning of one gate and the end of another (or the
+    # same) gate
+    target_tup = tuple(reversed(maxk)) if rev else tuple(maxk)
+    if target_tup in glut.values():
+        newglutid = list(glut.values()).index(target_tup)
+    else:
+        newglutid = len(glut)
+        glutmap[newglutid] = [newglutid]
+    rmapl = list(get_remap_candidates(ttf, limit=limit))
+    if len(rmapl) < 1:  # limit distillation below a certain threshold
+        return glut, glutmap
+    for (gl,ngid) in get_remap_candidates(ttf, limit=limit):
+        # This is a bit annoying, but because we keep augmenting the
+        # translation for gates to gatelets in glutmap, we have to insert
+        # gatelets in a reverse middle-out order. In other words, given a
+        # gate G that gets separated into shared gatelets named A,B,C,...,
+        # original gate data being broken down into G', G'', G''', ... with
+        # each iteration, we need to sort the gatelets in the following way
+        #
+        #       G ->       (A, G')             (best match in FORWARD tree)
+        #         ->       (A, G'', B)         (best match in REVERSE tree)
+        #         ->    (A, C, G''', B)        (best match in FORWARD tree)
+        #         -> (A, C, D, G'''', B)       (best match in FORWARD tree)
+        #         -> (A, C, D, G''''', E, B)   (best match in REVERSE tree)
+        #
+        # Might want to come up with a cleaner way of dealing with this but
+        # this is expected to be a fairly uncommon occurrence, but one that
+        # needs to be handled correctly. Otherwise we could get rid of the
+        # newv/satisfied loop in the following two cases
+        if rev:
+            target = next(filter(lambda x: x<=limit, reversed(glutmap[ngid])))
+            idx = revindex(glutmap[ngid], target)
+            glutmap[ngid][idx+1:idx+1] = [newglutid]
+            glut[ngid] = tuple(reversed(gl))
+        else:
+            target = next(filter(lambda x: x<=limit, glutmap[ngid]))
+            idx = glutmap[ngid].index(target)
+            glutmap[ngid][idx:idx] = [newglutid]
+            glut[ngid] = tuple(gl)
+    if rev:
+        glut[newglutid] = tuple(reversed(maxk))
+    else:
+        glut[newglutid] = tuple(maxk)
+    return glut, glutmap
+
+
+def optim_reasonable(glut, bound=None):
+    """Determine if continued optimization is reasonable based on some bound.
+       Otherwise default to reduction by 10% which isn't much but it's some
+       kind of bound if one isn't explicitly set. In this case we can compare
+       the number of unique and non-unique entries and determine if it's
+       possible to reduce redundancies below the bound if the number of unique
+       entries is less than the bound."""
+    mlutflat=[mlutdat for mlutl in glut.values() for mlutdat in mlutl]
+    mlutc = set(mlutflat)
+    if bound:
+        if len(mlutc) < bound and len(mlutflat) > bound:
+            return True, len(mlutflat)
+        return False, len(mlutflat)
+    return len(mlutc)/len(mlutflat) < 0.90, len(mlutflat)
+
+
+def distill_gatelets(nglut, bound=None):
+    """Top-level call for distilling gatelets. Loop over optimluts if we an
+    reasonably hit our optimization target. If limitations in ordering prevent
+    optimization from the endpoints of the MLUT sequence then break out of the
+    loop."""
+    glutmap = {i:[i] for i in range(len(nglut))}
+    opt = True
+    lastcount = 0
+    limit = max(nglut)
+    opt, lastcount = optim_reasonable(nglut, bound)
+    while opt:
+        logging.getLogger(__name__).debug(
+            f"Optimizing..."
+            )
+        (nglut, glutmap), maxvn = optimluts(nglut.copy(), glutmap, limit=limit)
+        opt, lastcountn = optim_reasonable(nglut, bound)
+        if lastcountn == lastcount:
+            break
+        lastcount = lastcountn
+    return nglut, glutmap
+
+
+def verify_distillation(oglut,nglut,glutmap):
+    _nglut = {}
+    for ogid in oglut:
+        gl = []
+        for gid in glutmap[ogid]:
+            gl.extend(nglut[gid])
+        _nglut[ogid] = tuple(gl)
+        assert oglut[ogid] == _nglut[ogid]
+
 
 # ######################################################## #
 # ------- Temporary jaqal Preprocessing Functions -------- #
