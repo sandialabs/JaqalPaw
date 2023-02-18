@@ -1,3 +1,4 @@
+import numpy
 import numpy as np
 from pathlib import Path
 from collections import Counter as multiset, defaultdict
@@ -22,8 +23,8 @@ from jaqalpaw.bytecode.encoding_parameters import (
     ANCILLA_COMPILER_TAG_BIT,
     ANCILLA_STATE_LSB,
     CHANNELS_PER_BOARD,
+    DMA_MUX_LSB,
     ENABLE_MLUT_PACKING,
-    GLUTW,
     MODTYPE_LSB,
     PLUTW,
     SLUTW,
@@ -33,6 +34,7 @@ from ..ir.circuit_constructor_visitor import populate_gate_slice
 from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
 
 flatten = lambda x: [y for l in x for y in l]
+group_adjacent = lambda a, k: zip(*([iter(a)] * k))
 
 # fmt: off
 # ######################################################## #
@@ -201,12 +203,12 @@ class CircuitCompiler(CircuitConstructor):
         """Generate the binary data for direct streaming (bypass mode)"""
         self.binarize_circuit(bypass=True)
         if channels is None:
-            channels = list(range(self.channel_num))
+            channels = (1<<self.channel_num)-1
         sorted_bytelist = []
         bytelist = []
         for bbind in range(self.num_boards):
             for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num)):
-                if ch in channels:
+                if (1<<ch) & channels:
                     bytelist.extend(self.binary_data[ch])
             sorted_bytelist.append(timesort_bytelist(flatten(bytelist)))
             bytelist.clear()
@@ -265,10 +267,11 @@ class CircuitCompiler(CircuitConstructor):
             for pd in pd_list:
                 self.prepbin[ch].append(pd.binarize(bypass=True))
         if channels is None:
-            channels = list(range(self.channel_num))
+            channels = (1<<self.channel_num)-1
         bytelist = []
-        for ch in channels:
-            bytelist.extend(self.prepbin[ch])
+        for ch in range(channels.bit_length()):
+            if (channels>>ch) & 1:
+                bytelist.extend(self.prepbin[ch])
         sorted_bytelist = timesort_bytelist(flatten(bytelist))
         return sorted_bytelist
 
@@ -1138,7 +1141,38 @@ class CircuitCompiler(CircuitConstructor):
                         self.sequence_data[i] += sd
             for _ in self.sequence_data:
                 self.programming_data.append([])
-        return self.programming_data, self.sequence_data
+        return self.consolidate_channel_routing(self.programming_data, self.sequence_data)
+
+    def consolidate_channel_routing(self, pbytes, sbytes):
+        """Combine comparable programming/sequence data for n-hot routing.
+        Primarily useful for cases where a number of channels are idle or have
+        a lot of overlap, but might not have much impact when lots of unique
+        data is used."""
+        if VERSION == 2:
+            pvd = defaultdict(int)
+            finalpbytes = []
+            finalsbytes = []
+            for n in range(self.num_boards):
+                newpbytes = []
+                newsbytes = []
+                for pv in map(bytes_to_int, pbytes[n]):
+                    pvm = pv & ((1<<DMA_MUX_LSB)-1)
+                    pvr = pv >> DMA_MUX_LSB
+                    pvd[pvm] |= pvr
+                for pvk,pvv in pvd.items():
+                    newpbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
+                for chdat in group_adjacent(sbytes[n],CHANNELS_PER_BOARD):
+                    pvd = defaultdict(int)
+                    for pv in map(bytes_to_int, chdat):
+                        pvm = pv & ((1<<DMA_MUX_LSB)-1)
+                        pvr = pv >> DMA_MUX_LSB
+                        pvd[pvm] |= pvr
+                    for pvk,pvv in pvd.items():
+                        newsbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
+                finalpbytes.append(newpbytes)
+                finalsbytes.append(newsbytes)
+            return finalpbytes, finalsbytes
+        return pbytes, sbytes
 
     def get_prepare_all_indices(self):
         self.prepare_all_hashes = dict()
