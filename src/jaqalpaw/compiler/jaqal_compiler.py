@@ -208,8 +208,8 @@ class CircuitCompiler(CircuitConstructor):
             channels = (1<<self.channel_num)-1
         sorted_bytelist = []
         bytelist = []
-        for bbind in range(self.num_boards):
-            for ch in range(bbind, min((bbind+1)*CHANNELS_PER_BOARD, self.channel_num)):
+        for bbind in range(0, self.channel_num, CHANNELS_PER_BOARD):
+            for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num)):
                 if (1<<ch) & channels:
                     bytelist.extend(self.binary_data[ch])
             sorted_bytelist.append(timesort_bytelist(flatten(bytelist)))
@@ -528,17 +528,20 @@ class CircuitCompiler(CircuitConstructor):
         self.PLUT_data = defaultdict(list)
         self.MMAP_data = defaultdict(dict)
         self.GLUT_data = defaultdict(dict)
+        plut_index_scratch = {}
         for ch in range(self.channel_num):
             gid = 0
             addr = 0
+            plut_index_scratch.clear()
             for k, v in sorted(self.ordered_gate_identifiers[ch].items()):
                 gate_start_addr = addr
                 for pd in self.unique_gates[ch][v]:
                     pd_bin = pd.binarize()
                     for pdb in pd_bin:
-                        if pdb not in self.PLUT_data[ch]:
+                        if pdb not in plut_index_scratch:
+                            plut_index_scratch[pdb] = len(self.PLUT_data[ch])
                             self.PLUT_data[ch].append(pdb)
-                        self.MMAP_data[ch][addr] = self.PLUT_data[ch].index(pdb)
+                        self.MMAP_data[ch][addr] = plut_index_scratch[pdb]
                         addr += 1
                 gate_end_addr = addr - 1
                 self.GLUT_data[ch][gid] = (gate_start_addr, gate_end_addr)
