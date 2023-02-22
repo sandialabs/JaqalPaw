@@ -473,7 +473,7 @@ def binarize_parameter(
                     sync_mask=sync_mask,
                     enable_mask=enable_mask,
                     fb_enable_mask=fb_enable_mask,
-                    apply_at_eof_mask=apply_at_eof_mask,
+                    apply_at_end_mask=apply_at_end_mask,
                     rst_frame_mask=rst_frame_mask,
                     fwd_frame0_mask=fwd_frame0_mask,
                     fwd_frame1_mask=fwd_frame1_mask,

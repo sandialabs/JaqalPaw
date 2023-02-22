@@ -25,6 +25,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
     CHANNELS_PER_BOARD,
     DMA_MUX_LSB,
     ENABLE_MLUT_PACKING,
+    GLUTW,
     MODTYPE_LSB,
     PLUTW,
     SLUTW,
@@ -842,7 +843,9 @@ class CircuitCompiler(CircuitConstructor):
                 and sum(map(len,S))>(1<<SLUTW))):
             if self.validate_gatelet_optimization:
                 Sinit = S
-            nglutdist, gateTransList = distill_gatelets(ngsetmlut.copy(), 1<<SLUTW)
+            nglutdist, gateTransList, mlutsize = distill_gatelets(ngsetmlut.copy(), 1<<SLUTW)
+            if mlutsize > 1<<SLUTW:
+                raise LUTOverflowException("MLUT filling exceeded")
             iteritem = nglutdist.items()
             if self.validate_gatelet_optimization:
                 verify_distillation(ngsetmlut,nglutdist,gateTransList)
@@ -861,6 +864,8 @@ class CircuitCompiler(CircuitConstructor):
 
         maddrctr = 0
         for gid, gdat in iteritem:
+            if gid > 1<<GLUTW:
+                raise LUTOverflowException("GLUT filling exceeded")
             maddrstart = maddrctr
             for maddr in gdat:
                 mlutfin[maddrctr] = maddr
@@ -1522,16 +1527,17 @@ def distill_gatelets(nglut, bound=None):
     lastcount = 0
     limit = max(nglut)
     opt, lastcount = optim_reasonable(nglut, bound)
+    lastcountn = lastcount
     while opt:
         logging.getLogger(__name__).debug(
-            f"Optimizing..."
+            f"Optimizing gatelets..."
             )
         (nglut, glutmap), maxvn = optimluts(nglut.copy(), glutmap, limit=limit)
         opt, lastcountn = optim_reasonable(nglut, bound)
         if lastcountn == lastcount:
             break
         lastcount = lastcountn
-    return nglut, glutmap
+    return nglut, glutmap, lastcountn
 
 
 def verify_distillation(oglut,nglut,glutmap):
