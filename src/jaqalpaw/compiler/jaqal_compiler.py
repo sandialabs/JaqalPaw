@@ -28,6 +28,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
     GLUTW,
     MODTYPE_LSB,
     PLUTW,
+    PROG_MODE_LSB,
     SLUTW,
     VERSION,
 )
@@ -201,6 +202,49 @@ class CircuitCompiler(CircuitConstructor):
             for pd in pd_list:
                 if pd.waittrig:
                     pd.delay = delay_settings[ch]
+
+    def streaming_data_from_luts(self, channels=None):
+        if channels is None:
+            channels = (1<<self.channel_num)-1
+        sorted_bytelist = []
+        bytelist = []
+        for bbind in range(0, self.channel_num, CHANNELS_PER_BOARD):
+            for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num)):
+                if (1<<ch) & channels:
+                    for gid in self.gate_sequence_ids[ch]:
+                        mstartaddr, mstopaddr = self.GLUT_data[ch][gid]
+                        for maddr in range(mstartaddr, mstopaddr+1):
+                            bytelist.append(int_to_bytes(
+                                bytes_to_int(self.PLUT_data[ch][self.MMAP_data[ch][maddr]])
+                              | (0b111<<PROG_MODE_LSB)
+                            ))
+            sorted_bytelist.append(timesort_bytelist(bytelist))
+            bytelist.clear()
+        return sorted_bytelist
+
+    def subcircuit_streaming_data_from_luts(self, channels=None):
+        if channels is None:
+            channels = (1<<self.channel_num)-1
+        sorted_subcircuit_bytelist = []
+        sorted_bytelist = []
+        bytelist = []
+        gs_ids = self.generate_gate_sequence_subcircuits_inds_only()
+        for bbind in range(0, self.channel_num, CHANNELS_PER_BOARD):
+            for scind in range(len(gs_ids[0])):
+                for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num)):
+                    if (1<<ch) & channels:
+                        for gid in gs_ids[ch][scind]:
+                            mstartaddr, mstopaddr = self.GLUT_data[ch][gid]
+                            for maddr in range(mstartaddr, mstopaddr+1):
+                                bytelist.append(int_to_bytes(
+                                    bytes_to_int(self.PLUT_data[ch][self.MMAP_data[ch][maddr]])
+                                  | (0b111<<PROG_MODE_LSB)
+                                ))
+                sorted_bytelist.append(timesort_bytelist(bytelist))
+                bytelist.clear()
+            sorted_subcircuit_bytelist.append(sorted_bytelist.copy())
+            sorted_bytelist.clear()
+        return sorted_subcircuit_bytelist
 
     def streaming_data(self, channels=None):
         """Generate the binary data for direct streaming (bypass mode)"""
@@ -686,14 +730,6 @@ class CircuitCompiler(CircuitConstructor):
         return all(map(lambda x: multiset(x[0]) == multiset(x[1]), zip(recon,Sinit)))
 
     @staticmethod
-    def revindex(ll,val):
-        """Like list.index(val), but find the last index"""
-        for i,l in enumerate(reversed(ll)):
-            if l == val:
-                return len(ll)-i-1
-        return None
-
-    @staticmethod
     def PLUT256to216(data, include_mod_type=True):
         if VERSION == 2:
             return int_to_bytes(bytes_to_int(data) & ((1<<MODTYPE_LSB)-1))
@@ -730,7 +766,7 @@ class CircuitCompiler(CircuitConstructor):
         for pido, pdato in enumerate(plut):
             nplutmap[pido] = nplutls.index(self.PLUT256to216(pdato,include_mod_type=False))
             if VERSION==2:
-                nroutmap[pido] = int(np.log2((bytes_to_int(pdato)>>MODTYPE_LSB)&((1<<8)-1)))
+                nroutmap[pido] = ((bytes_to_int(pdato)>>MODTYPE_LSB)&0xff).bit_length()-1
             else:
                 nroutmap[pido] = (bytes_to_int(pdato)>>MODTYPE_LSB)&0b111
 
@@ -779,7 +815,7 @@ class CircuitCompiler(CircuitConstructor):
                 mdato = mlut[maddr]  # old MLUT data (old PLUT addr)
                 # check if remapped PLUT data has been encountered by looking at the remapped PLUT addr
                 if nplutmap[mdato] in lmdatoset:
-                    if (nmlut[self.revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] & (1<<(PLUTW+nroutmap[mdato]))):
+                    if (nmlut[revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] & (1<<(PLUTW+nroutmap[mdato]))):
                         # This entry has already been referenced, this is a repeated occurrence so we need to
                         # advance the address. Due to how sets are being used, we augment the data, and this
                         # gets filtered out during programming. The reps command is tracked separately from
@@ -789,7 +825,7 @@ class CircuitCompiler(CircuitConstructor):
                         nmaddrcnt += 1
                     else:
                         # PLUT addr already used by current gate, just tag with additional routing data
-                        nmlut[self.revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] |= 1<<(PLUTW+nroutmap[mdato])
+                        nmlut[revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] |= 1<<(PLUTW+nroutmap[mdato])
                 else:
                     # we're getting a new PLUT addr, store in new MLUT, tag with
                     # the initial routing data and advance the new MLUT address
@@ -1089,7 +1125,8 @@ class CircuitCompiler(CircuitConstructor):
             except LUTOverflowException as e:
                 if self.lut_overflow_handling == LUTOverflowHandling.StreamDataDirectly:
                     logging.getLogger(__name__).info("couldn't fit data into LUTs, streaming directly")
-                    return [[] for _ in range(self.num_boards)], self.streaming_data(channel_mask)
+                    self.gateTransList = [None]*self.channel_num
+                    return [[] for _ in range(self.num_boards)], self.streaming_data_from_luts(channel_mask)
                 raise e
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
@@ -1234,6 +1271,16 @@ class CircuitCompiler(CircuitConstructor):
             partial_GSEQ_bin[ch] = gate_sequence_bytes(partial_gs_ids[ch], ch)
         return partial_GSEQ_bin
 
+    def generate_gate_sequence_subcircuits_inds_only(self):
+        self.get_prepare_all_indices()
+        partial_gs_ids = dict()
+        partial_GSEQ_bin = dict()
+        for ch, gidlist in self.gate_sequence_ids.items():
+            partial_gs_ids[ch] = get_subcircuits(
+                self.prepare_all_gids[ch], gidlist
+            )
+        return partial_gs_ids
+
     def generate_gate_sequence_subcircuits(self):
         self.get_prepare_all_indices()
         partial_gs_ids = dict()
@@ -1311,7 +1358,8 @@ class CircuitCompiler(CircuitConstructor):
             except LUTOverflowException as e:
                 if self.lut_overflow_handling == LUTOverflowHandling.StreamDataDirectly:
                     logging.getLogger(__name__).info("couldn't fit data into LUTs, streaming directly")
-                    return [[] for _ in range(self.num_boards)], self.subcircuit_streaming_data(channel_mask)
+                    self.gateTransList = [None]*self.channel_num
+                    return [[] for _ in range(self.num_boards)], self.subcircuit_streaming_data_from_luts(channel_mask)
                 raise e
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
