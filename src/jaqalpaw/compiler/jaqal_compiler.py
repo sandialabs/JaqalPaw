@@ -59,6 +59,7 @@ class LUTOverflowHandling(IntEnum):
     RaiseException = 0
     RecursiveCompilation = 1
     StreamDataDirectly = 2
+    InterleavedStream = 3
 
 
 class CircuitCompiler(CircuitConstructor):
@@ -80,6 +81,7 @@ class CircuitCompiler(CircuitConstructor):
     ):
         super().__init__(num_channels, pulse_definition)
         self.file = file
+        # print(self.file)
         self.code_literal = code_literal
         self.gatelet_optimization = gatelet_optimization
         self.lut_overflow_handling = lut_overflow_handling
@@ -113,6 +115,7 @@ class CircuitCompiler(CircuitConstructor):
             self.import_gate_pulses()
         self.cclist = []
         self.flattened_slice_list = None
+        self.boardseqdata = None
 
     @property
     def num_boards(self):
@@ -605,10 +608,10 @@ class CircuitCompiler(CircuitConstructor):
                         gind += 1
                 startind += maxlen
         if ENABLE_MLUT_PACKING:
-            self.GLUT_data_unpacked = self.GLUT_data
-            self.PLUT_data_unpacked = self.PLUT_data
-            self.MMAP_data_unpacked = self.MMAP_data
-            self.gate_sequence_ids_unpacked = self.gate_sequence_ids
+            self.GLUT_data_unpacked = self.GLUT_data.copy()
+            self.PLUT_data_unpacked = self.PLUT_data.copy()
+            self.MMAP_data_unpacked = self.MMAP_data.copy()
+            self.gate_sequence_ids_unpacked = self.gate_sequence_ids.copy()
             cglut = defaultdict(dict)
             cmlut = defaultdict(dict)
             cplut = defaultdict(list)
@@ -616,8 +619,10 @@ class CircuitCompiler(CircuitConstructor):
             ngluttot,nmluttot,npluttot = 0,0,0
             cgseq = defaultdict(list)
             self.gateTransList = []
+            self.gate_limit_list = []
+            luts_exceeded = False
             for n in range(self.channel_num):
-                _cglut, _cmlut, _cplut, _cgseq, gatetrans, bls, als = self.recast_lookup_table(
+                _cglut, _cmlut, _cplut, _cgseq, gatetrans, gatelimit, bls, als = self.recast_lookup_table(
                     self.GLUT_data[n],
                     self.MMAP_data[n],
                     self.PLUT_data[n],
@@ -628,12 +633,16 @@ class CircuitCompiler(CircuitConstructor):
                 cplut[n].extend(_cplut)
                 cgseq[n].extend(_cgseq)
                 self.gateTransList.append(gatetrans)
+                self.gate_limit_list.append(gatelimit)
                 gluttot += bls[0]
                 mluttot += bls[1]
                 pluttot += bls[2]
                 ngluttot += als[0]
                 nmluttot += als[1]
                 npluttot += als[2]
+                if gatelimit:# < (1<<GLUTW):
+                    print("gatelimit", gatelimit)
+                    luts_exceeded = True
             logging.getLogger(__name__).debug(f"Total GLUT: before {gluttot}, after {ngluttot}, ratio: {ngluttot/gluttot}")
             logging.getLogger(__name__).debug(f"Total MLUT: before {mluttot}, after {nmluttot}, ratio: {nmluttot/mluttot}")
             logging.getLogger(__name__).debug(f"Total PLUT: before {pluttot}, after {npluttot}, ratio: {npluttot/pluttot}")
@@ -642,12 +651,16 @@ class CircuitCompiler(CircuitConstructor):
             self.MMAP_data = cmlut
             self.GLUT_data = cglut
             self.gate_sequence_ids = cgseq
+            # if luts_exceeded:
+                # raise LUTOverflowException("LUT filling exceeded")
+            return luts_exceeded
         else:
             for ch in range(self.channel_num):
                 logging.getLogger(__name__).debug(f"LUT sizes channel: {ch}")
                 logging.getLogger(__name__).debug(f"Total GLUT: {len(self.GLUT_data[ch])}")
                 logging.getLogger(__name__).debug(f"Total MLUT: {len(self.MMAP_data[ch])}")
                 logging.getLogger(__name__).debug(f"Total PLUT: {len(self.PLUT_data[ch])}")
+        return False
 
     def condense_set(self, _S, optimbound=0):
         sl = defaultdict(set)
@@ -757,8 +770,9 @@ class CircuitCompiler(CircuitConstructor):
         # convert the set to a list so we can reliably retrieve the data's associated index
         nplutls = tuple(nplutset.keys())
 
-        if len(nplutls) > (1<<PLUTW):
-            raise LUTOverflowException("PLUT filling exceeded")
+        if len(nplutls) > (1<<PLUTW) and self.lut_overflow_handling != LUTOverflowHandling.InterleavedStream:
+            print("lut of handling", self.lut_overflow_handling)
+            raise LUTOverflowException(f"PLUT filling exceeded in recast {self.lut_overflow_handling}")
 
         # create a dict that reindexes the original PLUT data based on the new
         # set. For each original plut address, also store the target
@@ -798,6 +812,10 @@ class CircuitCompiler(CircuitConstructor):
         glutrangeremap = dict()
         # setup reverse glut mapping that accounts for branching
         rglut = defaultdict(list)
+
+        PLUTWEXT = PLUTW+10
+        gatelimit = (1<<GLUTW)
+        badgates = set()
         for gn,gr in glut.items():
             rglut[gr].append(gn)
         # walk the original GLUT
@@ -811,26 +829,44 @@ class CircuitCompiler(CircuitConstructor):
             lmdatoset = []  # list of updated MLUT data (PLUT addresses) to track for remapping
             nmstartaddr = nmaddrcnt  # new GLUT address bounds need to be tracked independently
             # get the MLUT addresses
+            gateinvalid = False
+            # for maddr in range(gdato[0],gdato[1]+1):
+                # mdato = mlut[maddr]  # old MLUT data (old PLUT addr)
+                # if mdato >= 1<<PLUTW:
+                    # gatelimit = min(gatelimit, gido)
+                    # badgates.add(gido)
+                    # gateinvalid = True
+                    # print("ADDED GATE1", gido)
+            if nmaddrcnt >= 1<<SLUTW:
+                    badgates.add(gido)
+                    gateinvalid = True
+                    # print("ADDED GATE1", gido)
+            if gateinvalid:
+                continue
             for maddr in range(gdato[0],gdato[1]+1):
                 mdato = mlut[maddr]  # old MLUT data (old PLUT addr)
+                # if mdato >= 1<<PLUTW:
+                    # gatelimit = min(gatelimit, gido)
+                    # badgates.add(gido)
+                    # break
                 # check if remapped PLUT data has been encountered by looking at the remapped PLUT addr
                 if nplutmap[mdato] in lmdatoset:
-                    if (nmlut[revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] & (1<<(PLUTW+nroutmap[mdato]))):
+                    if (nmlut[revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] & (1<<(PLUTWEXT+nroutmap[mdato]))):
                         # This entry has already been referenced, this is a repeated occurrence so we need to
                         # advance the address. Due to how sets are being used, we augment the data, and this
                         # gets filtered out during programming. The reps command is tracked separately from
                         # the address for this purpose.
                         lmdatoset.append(nplutmap[mdato])
-                        nmlut[nmaddrcnt] = nplutmap[mdato] | 1<<(PLUTW+nroutmap[mdato]) | (lmdatoset.count(nplutmap[mdato])-1)<<(PLUTW+8)
+                        nmlut[nmaddrcnt] = nplutmap[mdato] | 1<<(PLUTWEXT+nroutmap[mdato]) | (lmdatoset.count(nplutmap[mdato])-1)<<(PLUTWEXT+8)
                         nmaddrcnt += 1
                     else:
                         # PLUT addr already used by current gate, just tag with additional routing data
-                        nmlut[revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] |= 1<<(PLUTW+nroutmap[mdato])
+                        nmlut[revindex(lmdatoset,nplutmap[mdato])+nmstartaddr] |= 1<<(PLUTWEXT+nroutmap[mdato])
                 else:
                     # we're getting a new PLUT addr, store in new MLUT, tag with
                     # the initial routing data and advance the new MLUT address
                     lmdatoset.append(nplutmap[mdato])
-                    nmlut[nmaddrcnt] = nplutmap[mdato] | 1<<(PLUTW+nroutmap[mdato])
+                    nmlut[nmaddrcnt] = nplutmap[mdato] | 1<<(PLUTWEXT+nroutmap[mdato])
                     nmaddrcnt += 1
             # the current gate has been translated in the new MLUT, but we aren't done yet
             # create a mapping of the old gate id (which has otherwise been perfectly valid)
@@ -879,8 +915,12 @@ class CircuitCompiler(CircuitConstructor):
                 and sum(map(len,S))>(1<<SLUTW))):
             if self.validate_gatelet_optimization:
                 Sinit = S
-            nglutdist, gateTransList, mlutsize = distill_gatelets(ngsetmlut.copy(), 1<<SLUTW)
-            if mlutsize > 1<<SLUTW:
+            if self.lut_overflow_handling == LUTOverflowHandling.InterleavedStream:
+                maxiter = self.max_gatelet_opt_iterations 
+            else:
+                maxiter = None
+            nglutdist, gateTransList, mlutsize = distill_gatelets(ngsetmlut, 1<<SLUTW, maxiter=maxiter)
+            if mlutsize > 1<<SLUTW and self.lut_overflow_handling != LUTOverflowHandling.InterleavedStream:
                 raise LUTOverflowException("MLUT filling exceeded")
             iteritem = nglutdist.items()
             if self.validate_gatelet_optimization:
@@ -889,7 +929,8 @@ class CircuitCompiler(CircuitConstructor):
                 if oldgid & (1<<ANCILLA_COMPILER_TAG_BIT):
                     raise CircuitCompilerException("gatelet optimization not yet supported with branching")
                 else:
-                    new_gseq_list.extend(gateTransList[oldgid])
+                    if oldgid not in badgates:
+                        new_gseq_list.extend(gateTransList[oldgid])
         else:
             new_gseq_list = gseq
             iteritem = enumerate(S)
@@ -897,19 +938,48 @@ class CircuitCompiler(CircuitConstructor):
         glutfin = dict()
         mlutfin = dict()
         plutfin = tuple(nplutset.values())
-
         maddrctr = 0
         for gid, gdat in iteritem:
-            if gid > 1<<GLUTW:
-                raise LUTOverflowException("GLUT filling exceeded")
+            if gid >= 1<<GLUTW:
+                if self.lut_overflow_handling != LUTOverflowHandling.InterleavedStream:
+                    raise LUTOverflowException("GLUT filling exceeded")
+                else:
+                    # print('glim', gid, gatelimit)
+                    gatelimit = min(gatelimit, gid)
+                    if gateTransList:
+                        for ogid, glist in gateTransList.items():
+                            for ngid in glist:
+                                if ngid >= 1<<GLUTW:
+                                    badgates.add(ogid)
+                    else:
+                        badgates.add(gid)
+                    break
             maddrstart = maddrctr
             for maddr in gdat:
-                mlutfin[maddrctr] = maddr
+                if maddrctr >= 1<<SLUTW or (maddr&((1<<PLUTWEXT)-1)) >= 1<<PLUTW:
+                    # print('mlim', gid, gatelimit, maddrctr, (maddr&((1<<PLUTWEXT)-1)))
+                    gatelimit = min(gatelimit, gid)
+                    if gateTransList:
+                        # print(gateTransList)
+                        # for ogid, glist in enumerate(gateTransList):
+                        for ogid, glist in gateTransList.items():
+                            if gid in glist:
+                                badgates.add(ogid)
+                            # for ngid in glist:
+                                # if ngid >= 1<<GLUTW:
+                                    # badgates.add(ogid)
+                    else:
+                        badgates.add(gid)
+                    break
+                mlutfin[maddrctr] = (maddr&((1<<PLUTW)-1))|((maddr>>PLUTWEXT)<<PLUTW)
                 maddrctr += 1
-            glutfin[gid] = (maddrstart, maddrctr-1)
+            else:
+                glutfin[gid] = (maddrstart, maddrctr-1)
         for gid in glut.keys():
             if gid & (1<<ANCILLA_COMPILER_TAG_BIT):
                 glutfin[gid] = glutrangeremap[glut[gid]]
+        # if gatelimit == (1<<GLUTW) - 1:
+            # gatelimit = None
 
         # check MLUT packing, this does not involve gatelet optimization, but
         # trying to keep settings to a minimum
@@ -944,8 +1014,135 @@ class CircuitCompiler(CircuitConstructor):
         logging.getLogger(__name__).debug(f" MLUT: was {len(mlut)} now {len(mlutfin)} reduction {len(mlutfin)/len(mlut)}")
         logging.getLogger(__name__).debug(f" PLUT: was {len(plut)} now {len(plutfin)} reduction {len(plutfin)/len(plut)}")
 
-        return glutfin, mlutfin, plutfin, new_gseq_list, gateTransList, (len(glut), len(mlut), len(plut)), (len(glutfin), len(mlutfin), len(plutfin))
+        return (
+                glutfin,
+                mlutfin,
+                plutfin,
+                new_gseq_list,
+                gateTransList,
+                badgates, #gatelimit,
+                (len(glut), len(mlut), len(plut)),
+                (len(glutfin), len(mlutfin), len(plutfin)),
+               )
 
+    def generate_combined_programming_and_streaming_data(self, channel_mask=None):
+        if channel_mask is None:
+            channel_mask = (1 << self.channel_num) - 1
+        self.PLUT_bin = defaultdict(list)
+        self.MMAP_bin = defaultdict(list)
+        self.GLUT_bin = defaultdict(list)
+        self.GSEQ_bin = defaultdict(list)
+        progvalid_list = [True]*len(self.gate_sequence_ids_unpacked[0])
+        for ch in range(self.channel_num):
+            print(f"ch {ch}, len {len(self.gate_sequence_ids_unpacked[ch])}")
+            for idx, oldgid in enumerate(self.gate_sequence_ids_unpacked[ch]):
+                # for newgid in self.gateTransList[oldgid]:
+                # if oldgid >= self.gate_limit_list[ch]:
+                if oldgid in self.gate_limit_list[ch]:
+                    progvalid_list[idx] = False
+        for ch in range(self.channel_num):
+            self.PLUT_bin[ch], errp = program_PLUT(
+                {v: i for i, v in enumerate(self.PLUT_data[ch])}, ch
+            )
+            self.GLUT_bin[ch], errg = program_GLUT(self.GLUT_data[ch], ch)
+            self.MMAP_bin[ch], errm = program_SLUT(self.MMAP_data[ch], ch)
+        statelist = []
+        state = progvalid_list[0]
+        statectr = 0
+        fstatectr=0
+        for pstate in progvalid_list:
+            if pstate != state:
+                statelist.append((state, statectr))
+                state = pstate
+                statectr = 0
+            statectr += 1
+            fstatectr += 1
+        statelist.append((state, statectr))
+        gids_unpacked = self.gate_sequence_ids_unpacked.copy()
+        board_sequence_data = [[] for _ in range(self.num_boards)]
+        cntsum = 0
+        for pstate, cnt in statelist:
+            if pstate:
+                self.GSEQ_bin = defaultdict(list)
+                for ch in range(self.channel_num):
+                    seqlist = []
+                    sc = 0
+                    for ogid in gids_unpacked[ch][cntsum:cntsum+cnt]:
+                        if self.gateTransList[ch] is not None:
+                            # if ogid not in self.gateTransList[ch]:
+                                # print(ogid, ogid in self.gate_limit_list[ch], pstate, cnt, statelist,gids_unpacked[ch][:cnt], self.gate_limit_list[ch])
+                            for ngid in self.gateTransList[ch][ogid]:
+                                seqlist.append(ngid)
+                        else:
+                            seqlist.append(ogid)
+                        sc += 1
+                    print('seq',ch, sc, ogid)
+                    self.GSEQ_bin[ch].extend(gate_sequence_bytes(seqlist, ch))
+                for bidx,bbind in enumerate(range(0, self.channel_num, CHANNELS_PER_BOARD)):
+                    board_seq_dat = []
+                    # raster through channels to interleave sequence data
+                    for bindata in zip_longest(
+                        *list(
+                            self.GSEQ_bin[ch]
+                            for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num))
+                            if (1 << ch) & channel_mask
+                        ),
+                        fillvalue=b"",
+                    ):
+                        if bindata:
+                            board_seq_dat.extend(bindata)
+                            # board_sequence_data[bidx].extend(bindata)
+
+                    # sequence data might match an a lot of channels, filter out routing data and compare content, then broadcast
+                    newsbytes = []
+                    pvd = defaultdict(int)
+                    for chdat in group_adjacent(board_seq_dat,CHANNELS_PER_BOARD):
+                        pvd = defaultdict(int)
+                        for pv in map(bytes_to_int, chdat):
+                            pvm = pv & ((1<<DMA_MUX_LSB)-1)
+                            pvr = pv >> DMA_MUX_LSB
+                            pvd[pvm] |= pvr
+                        for pvk,pvv in pvd.items():
+                            newsbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
+                    board_sequence_data[bidx].extend(newsbytes)
+            else:
+                sorted_bytelist = []
+                bytelist = []
+                for bidx, bbind in enumerate(range(0, self.channel_num, CHANNELS_PER_BOARD)):
+                    print(len(bytelist))
+                    first_valid_channel = None
+                    for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num)):
+                        sc = 0
+                        if (1<<ch) & channel_mask:
+                            if first_valid_channel is None:
+                                first_valid_channel = ch
+                            for gid in gids_unpacked[ch][cntsum:cntsum+cnt]:
+                                # for gid in self.gateTransList[ch][ogid]:
+                                mstartaddr, mstopaddr = self.GLUT_data_unpacked[ch][gid]
+                                for maddr in range(mstartaddr, mstopaddr+1):
+                                    bytelist.append(int_to_bytes(
+                                        bytes_to_int(self.PLUT_data_unpacked[ch][self.MMAP_data_unpacked[ch][maddr]])
+                                      | (0b111<<PROG_MODE_LSB)
+                                    ))
+                                sc+=1
+                        print('strm',bidx,ch,sc)
+                    tsbytes = timesort_bytelist(bytelist)
+                    board_sequence_data[bidx].extend(tsbytes)
+                    # print('strm',bidx,len(board_sequence_data[bidx]))
+                    # for ch in range(bbind, min(bbind + CHANNELS_PER_BOARD, self.channel_num)):
+                        # if first_valid_channel is not None and ch == first_valid_channel:
+                            # self.GSEQ_bin[ch].extend(tsbytes)
+                        # else:
+                            # self.GSEQ_bin[ch].extend([b""]*len(tsbytes))
+                    bytelist.clear()
+            # for ch in range(self.channel_num):
+                # gids_unpacked[ch] = gids_unpacked[ch][cnt:]
+        # print(board_sequence_data[0])
+        # print(len(board_sequence_data))
+            cntsum += cnt
+        # print(len(board_sequence_data[0]))
+        # print(len(board_sequence_data[1]))
+        return board_sequence_data
 
     def generate_programming_data(self):
         """Convert the LUT programming IR representations to bytecode"""
@@ -963,6 +1160,7 @@ class CircuitCompiler(CircuitConstructor):
             self.GSEQ_bin[ch] = gate_sequence_bytes(self.gate_sequence_ids[ch], ch)
             if errp:
                 if self.lut_overflow_handling == LUTOverflowHandling.RaiseException:
+                    print("lut handling", self.lut_overflow_handling)
                     raise LUTOverflowException("PLUT filling exceeded")
                 for i, d in enumerate(self.MMAP_data[ch].values()):
                     if d == errp:
@@ -1036,7 +1234,7 @@ class CircuitCompiler(CircuitConstructor):
                 llist.append(l)
         return l, llist
 
-    def compile(self):
+    def compile(self, channel_mask=None):
         """Compile the circuit, starting from parsing the jaqal file"""
         if self.slice_list is None:
             if self.file is None and self.code_literal is None:
@@ -1050,7 +1248,13 @@ class CircuitCompiler(CircuitConstructor):
         if self.flattened_slice_list is None:
             self.flattened_slice_list = self.slice_list
         self.extract_gates()
-        self.generate_lookup_tables()
+        luts_exceeded = self.generate_lookup_tables()
+        print("luts exceeded?", luts_exceeded)
+        if luts_exceeded and self.lut_overflow_handling == LUTOverflowHandling.InterleavedStream:
+            print("generating interleaved")
+            self.boardseqdata = self.generate_combined_programming_and_streaming_data(channel_mask)
+            return None, None, None
+        print("generating normal")
         gpres = self.generate_programming_data()
         slice_ind = None
         if gpres:
@@ -1121,12 +1325,13 @@ class CircuitCompiler(CircuitConstructor):
             channel_mask = (1 << self.channel_num) - 1
         if not self.compiled:
             try:
-                self.compile()
+                self.compile(channel_mask)
             except LUTOverflowException as e:
                 if self.lut_overflow_handling == LUTOverflowHandling.StreamDataDirectly:
                     logging.getLogger(__name__).info("couldn't fit data into LUTs, streaming directly")
                     self.gateTransList = [None]*self.channel_num
                     return [[] for _ in range(self.num_boards)], self.streaming_data_from_luts(channel_mask)
+                # elif self.lut_overflow_handling == LUTOverflowHandling.InterleavedStream:
                 raise e
         self.final_byte_dict = defaultdict(list)
         self.programming_data = list()
@@ -1190,6 +1395,7 @@ class CircuitCompiler(CircuitConstructor):
             for _ in self.sequence_data:
                 self.programming_data.append([])
         return self.consolidate_channel_routing(self.programming_data, self.sequence_data)
+    # return self.programming_data, self.sequence_data
 
     def consolidate_channel_routing(self, pbytes, sbytes):
         """Combine comparable programming/sequence data for n-hot routing.
@@ -1209,16 +1415,19 @@ class CircuitCompiler(CircuitConstructor):
                     pvd[pvm] |= pvr
                 for pvk,pvv in pvd.items():
                     newpbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
-                for chdat in group_adjacent(sbytes[n],CHANNELS_PER_BOARD):
-                    pvd = defaultdict(int)
-                    for pv in map(bytes_to_int, chdat):
-                        pvm = pv & ((1<<DMA_MUX_LSB)-1)
-                        pvr = pv >> DMA_MUX_LSB
-                        pvd[pvm] |= pvr
-                    for pvk,pvv in pvd.items():
-                        newsbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
                 finalpbytes.append(newpbytes)
-                finalsbytes.append(newsbytes)
+                if self.boardseqdata is None:
+                    for chdat in group_adjacent(sbytes[n],CHANNELS_PER_BOARD):
+                        pvd = defaultdict(int)
+                        for pv in map(bytes_to_int, chdat):
+                            pvm = pv & ((1<<DMA_MUX_LSB)-1)
+                            pvr = pv >> DMA_MUX_LSB
+                            pvd[pvm] |= pvr
+                        for pvk,pvv in pvd.items():
+                            newsbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
+                    finalsbytes.append(newsbytes)
+                else:
+                    finalsbytes = self.boardseqdata
             return finalpbytes, finalsbytes
         return pbytes, sbytes
 
@@ -1294,10 +1503,10 @@ class CircuitCompiler(CircuitConstructor):
 
     def partial_sequence_bytecode(self, channel_mask=None, starting_index=0):
         """Reduced form of bytecode function that only generates the sequence data from a given index"""
-        if not self.compiled:
-            self.compile()
         if channel_mask is None:
             channel_mask = (1 << self.channel_num) - 1
+        if not self.compiled:
+            self.compile(channel_mask)
         self.final_byte_dict = defaultdict(list)
         programming_data = list()
         sequence_data = list()
@@ -1354,7 +1563,7 @@ class CircuitCompiler(CircuitConstructor):
             channel_mask = (1 << self.channel_num) - 1
         if not self.compiled:
             try:
-                self.compile()
+                self.compile(channel_mask)
             except LUTOverflowException as e:
                 if self.lut_overflow_handling == LUTOverflowHandling.StreamDataDirectly:
                     logging.getLogger(__name__).info("couldn't fit data into LUTs, streaming directly")
@@ -1565,7 +1774,7 @@ def optim_reasonable(glut, bound=None):
     return len(mlutc)/len(mlutflat) < 0.90, len(mlutflat)
 
 
-def distill_gatelets(nglut, bound=None):
+def distill_gatelets(nglut, bound=None, maxiter=None):
     """Top-level call for distilling gatelets. Loop over optimluts if we an
     reasonably hit our optimization target. If limitations in ordering prevent
     optimization from the endpoints of the MLUT sequence then break out of the
@@ -1576,7 +1785,11 @@ def distill_gatelets(nglut, bound=None):
     limit = max(nglut)
     opt, lastcount = optim_reasonable(nglut, bound)
     lastcountn = lastcount
+    itr = 0
     while opt:
+        if itr >= maxiter:
+            break
+        itr += 1
         logging.getLogger(__name__).debug(
             f"Optimizing gatelets..."
             )
