@@ -140,7 +140,7 @@ def generate_bytes(
     final_data = []
     final_bytes = b""
     for n, x in enumerate(xdata):
-        if modtype & (FRMROT0 | FRMROT1) and n != 0:
+        if modtype & (FRMROT0 | FRMROT1) and n != 0 and PYSPLINE:
             v0 = 0
         else:
             v0 = int(coeffs[3, n])
@@ -267,8 +267,13 @@ def generate_spline_bytes(
     else:
         if modtype in (PHSMOD0, PHSMOD1, FRMROT0, FRMROT1):
             apply_phase_mask = True
+            if modtype in (FRMROT0, FRMROT1):
+                phase_handling = 2
+            else:
+                phase_handling = 1
         else:
             apply_phase_mask = False
+            phase_handling = 0
         if PYSPLINE:
             dur = nsteps
             n_points = len(xs)
@@ -288,7 +293,7 @@ def generate_spline_bytes(
                     cs.c, nsteps=nsteps, shift_len=shift_len
                 )
         else:
-            modified_coeff_table, shift_len_fin, nsteps = fit_spline_distribute(ys, nsteps, apply_phase_mask)
+            modified_coeff_table, shift_len_fin, nsteps = fit_spline_distribute(ys, nsteps, phase_handling)
         _, final_byte_list = generate_bytes(
             modified_coeff_table,
             xs[1:],

@@ -17,17 +17,17 @@ STEP_POINTER_TYPE = np.ctypeslib.ndpointer(dtype=np.int64,
                                       flags="C")
 
 # define prototypes
-mylib.FitSpline.argtypes = [DATA_POINTER_TYPE, STEP_POINTER_TYPE, c_int, c_bool]
-mylib.FitSplineDistribute.argtypes = [DATA_POINTER_TYPE, c_int, c_int, c_bool]
+mylib.FitSpline.argtypes = [DATA_POINTER_TYPE, STEP_POINTER_TYPE, c_int, c_int]
+mylib.FitSplineDistribute.argtypes = [DATA_POINTER_TYPE, c_int, c_int, c_int]
 
-def fit_spline(data, steplist, apply_phase_mask=False):
+def fit_spline(data, steplist, apply_phase_mask=0):
     mylib.FitSpline.restype = np.ctypeslib.ndpointer(dtype=c_longlong, shape=(len(data), 6))
     result = mylib.FitSpline(np.float64(data), np.int64(steplist), len(data), apply_phase_mask)
     fixedres = result.T[:,:-1]
     shift_len = fixedres[0,:]
     return np.float64(fixedres[2:,:]), shift_len.tolist()
 
-def fit_spline_distribute(data, duration, apply_phase_mask=False):
+def fit_spline_distribute(data, duration, apply_phase_mask=0):
     mylib.FitSplineDistribute.restype = np.ctypeslib.ndpointer(dtype=c_longlong, shape=(len(data), 6))
     result = mylib.FitSplineDistribute(np.float64(data), int(duration), len(data), apply_phase_mask)
     fixedres = result.T[:,:-1]
