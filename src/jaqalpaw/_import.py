@@ -4,6 +4,6 @@
 from jaqalpaq._import import jaqal_import
 
 
-def get_jaqal_pulses(jaqal_module, import_path=None):
-    jp = jaqal_import(str(jaqal_module), "jaqal_pulses", import_path=import_path)
+def get_jaqal_pulses(jaqal_module, jaqal_filename=None):
+    jp = jaqal_import(str(jaqal_module), "jaqal_pulses", jaqal_filename=jaqal_filename)
     return jp.GatePulses()

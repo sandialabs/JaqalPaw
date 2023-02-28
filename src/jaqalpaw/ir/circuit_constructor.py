@@ -1,4 +1,3 @@
-from pathlib import Path
 from jaqalpaq.parser import parse_jaqal_string, parse_jaqal_file
 from jaqalpaq.parser.parser import parse_jaqal_string_header, parse_jaqal_file_header
 from jaqalpaq.core.algorithm import expand_macros, fill_in_let
@@ -53,7 +52,7 @@ class CircuitConstructor:
         if self.file is None and self.pulse_definition:
             return self.pulse_definition
         self.pulse_definition = get_jaqal_pulses(
-            ".".join(self.gate_pulse_info), Path(self.file).parent
+            ".".join(self.gate_pulse_info), self.file
         )
         return self.pulse_definition
 
