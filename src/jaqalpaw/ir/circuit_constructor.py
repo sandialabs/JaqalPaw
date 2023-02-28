@@ -52,10 +52,27 @@ class CircuitConstructor:
             raise CircuitCompilerException("No gate pulse file specified!")
         if self.file is None and self.pulse_definition:
             return self.pulse_definition
-        self.pulse_definition = get_jaqal_pulses(
-            ".".join(self.gate_pulse_info), Path(self.file).parent
-        )
-        return self.pulse_definition
+        try:  # default to original import method
+            import runpy
+
+            gp_path = Path(self.file).parent
+            # jaqal token returns a list of imports (split at '.'), last one is class name
+            gp_name = self.gate_pulse_info[-1]
+            for p in self.gate_pulse_info[:-1]:
+                gp_path /= p  # construct path object from usepulses call
+            gp_path = gp_path.with_suffix(".py")
+            if gp_path.exists():
+                self.gate_pulse_file_path = str(gp_path)
+            else:
+                raise CircuitCompilerException(f"Can't find path {str(gp_path)}")
+            pd_import = runpy.run_path(gp_path, init_globals={"PulseData": PulseData})
+            self.pulse_definition = pd_import[gp_name]()
+            return pd_import[gp_name]
+        except:  # fall back on jaqalpaq import unconditionally
+            self.pulse_definition = get_jaqal_pulses(
+                ".".join(self.gate_pulse_info), Path(self.file).parent
+            )
+            return self.pulse_definition
 
     def generate_ast(self, file=None, override_dict=None):
         if self.base_circuit is None:
