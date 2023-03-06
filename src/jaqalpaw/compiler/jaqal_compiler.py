@@ -1786,6 +1786,8 @@ def distill_gatelets(nglut, bound=None, maxiter=None):
     opt, lastcount = optim_reasonable(nglut, bound)
     lastcountn = lastcount
     itr = 0
+    if maxiter is None:
+        maxiter = 1e6
     while opt:
         if itr >= maxiter:
             break
