@@ -14,10 +14,11 @@ def convert_to_bytes(d, bytenum=5, signed=True):
 
 def map_to_bytes(data, bytenum=5):
     try:
-        return reduce(
-            lambda x, y: x + y,
-            [d.to_bytes(bytenum, byteorder=ENDIANNESS, signed=True) for d in data],
-        )
+        return b"".join(
+            map(lambda d: d.to_bytes(bytenum, 
+                                     byteorder=ENDIANNESS, 
+                                     signed=True), 
+                data))
     except OverflowError:
         print(f"Data: {data}\nBitLengths: {[len(bin(d))-2 for d in data]}")
         raise

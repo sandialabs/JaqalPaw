@@ -121,7 +121,7 @@ def combine_data(common_time_data):
             du[newdat].append(ch)
     comblist = []
     for dat,chs in du.items():
-        newdat = dat
+        newdat = dat & ((1<<DMA_MUX_LSB)-1)
         for ch in chs:
             newdat |= 1<<ch<<DMA_MUX_LSB
         comblist.append(int_to_bytes(newdat))
