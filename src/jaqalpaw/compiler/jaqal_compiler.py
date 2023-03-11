@@ -1226,6 +1226,7 @@ class CircuitCompiler(CircuitConstructor):
         data by channel, where 0 prevents the data from being sent and the LSB
         corresponds to channel 0. If channel_mask is None, data is supplied for
         all channels up to self.channel_num"""
+        return self.subcircuit_bytecode(channel_mask, combine_subcircuits=True)
         if channel_mask is None:
             channel_mask = (1 << self.channel_num) - 1
         if not self.compiled:
@@ -1310,26 +1311,17 @@ class CircuitCompiler(CircuitConstructor):
             finalpbytes = []
             finalsbytes = []
             for n in range(self.num_boards):
-                newpbytes = []
-                newsbytes = []
-                pvd = defaultdict(int)
-                for pv in map(bytes_to_int, pbytes[n]):
-                    pvm = pv & ((1<<DMA_MUX_LSB)-1)
-                    pvr = pv >> DMA_MUX_LSB
-                    pvd[pvm] |= pvr
-                for pvk,pvv in pvd.items():
-                    newpbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
-                finalpbytes.append(newpbytes)
+                finalpbytes.append(self._consolidate_prog_routing(pbytes[n]))
                 if self.boardseqdata is None:
-                    for chdat in group_adjacent(sbytes[n],CHANNELS_PER_BOARD):
-                        pvd = defaultdict(int)
-                        for pv in map(bytes_to_int, chdat):
-                            pvm = pv & ((1<<DMA_MUX_LSB)-1)
-                            pvr = pv >> DMA_MUX_LSB
-                            pvd[pvm] |= pvr
-                        for pvk,pvv in pvd.items():
-                            newsbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
-                    finalsbytes.append(newsbytes)
+                    if isinstance(sbytes[0][0], list):
+                        finalsbytes.append([])
+                        for sc in range(len(sbytes[0])):
+                            if combine_subcircuits:
+                                finalsbytes[n].extend(self._consolidate_seq_routing(sbytes[n][sc]))
+                            else:
+                                finalsbytes[n].append(self._consolidate_seq_routing(sbytes[n][sc]))
+                    else:
+                        finalsbytes.append(self._consolidate_seq_routing(sbytes[n]))
                 else:
                     if combine_subcircuits:
                         finalsbytes.append(reduce(lambda x,y: x+y, self.boardseqdata[n]))
@@ -1337,6 +1329,31 @@ class CircuitCompiler(CircuitConstructor):
                         finalsbytes = self.boardseqdata
             return finalpbytes, finalsbytes
         return pbytes, sbytes
+
+    def _consolidate_prog_routing(self, blist):
+        newbytes = []
+        pvd = defaultdict(int)
+        for pv in map(bytes_to_int, blist):
+            pvm = pv & ((1<<DMA_MUX_LSB)-1)
+            pvr = pv >> DMA_MUX_LSB
+            pvd[pvm] |= pvr
+        for pvk,pvv in pvd.items():
+            newbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
+        return newbytes
+
+    def _consolidate_seq_routing(self, blist):
+        return blist
+        newsbytes = []
+        pvd = defaultdict(int)
+        for chdat in group_adjacent(blist,CHANNELS_PER_BOARD):
+            pvd = defaultdict(int)
+            for pv in map(bytes_to_int, chdat):
+                pvm = pv & ((1<<DMA_MUX_LSB)-1)
+                pvr = pv >> DMA_MUX_LSB
+                pvd[pvm] |= pvr
+            for pvk,pvv in pvd.items():
+                newsbytes.append(int_to_bytes(pvk|(pvv<<DMA_MUX_LSB)))
+        return newsbytes
 
     def get_prepare_all_indices(self):
         self.prepare_all_hashes = dict()
@@ -1389,7 +1406,7 @@ class CircuitCompiler(CircuitConstructor):
 
     def generate_gate_sequence_from_index(self, ind):
         """Generate gate sequence bytes from a given prepare_all index"""
-        self.generate_gate_sequence_subcircuits_inds_only()
+        partial_gs_ids = self.generate_gate_sequence_subcircuits_inds_only()
         partial_GSEQ_bin = dict()
         for ch in partial_gs_ids:
             partial_GSEQ_bin[ch] = gate_sequence_bytes(partial_gs_ids[ch], ch)
@@ -1446,7 +1463,7 @@ class CircuitCompiler(CircuitConstructor):
             sequence_data.append(board_sequence_data)
         return programming_data, sequence_data
 
-    def subcircuit_bytecode(self, channel_mask=None):
+    def subcircuit_bytecode(self, channel_mask=None, combine_subcircuits=False):
         """Return the bytecode for compiling and running a gate sequence.
         The data is returned in two blocks, programming data and sequence data.
         Each block contains a list of lists, where the structure of each block is
@@ -1528,7 +1545,7 @@ class CircuitCompiler(CircuitConstructor):
             self.programming_data.append(board_programming_data)
             self.sequence_data.append(board_sequence_data)
         return self.consolidate_channel_routing(
-                self.programming_data, self.sequence_data, combine_subcircuits=False)
+                self.programming_data, self.sequence_data, combine_subcircuits=combine_subcircuits)
 
 
 def revindex(ll,val):
