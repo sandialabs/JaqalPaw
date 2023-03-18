@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from functools import lru_cache
 
@@ -6,6 +7,13 @@ from jaqalpaw.utilities.helper_functions import make_list_hashable
 from jaqalpaw.utilities.datatypes import to_clock_cycles
 from jaqalpaw.utilities.parameters import CLKFREQ
 
+DEPRECATED_KWARGS = {
+        'apply_at_eof_mask': {
+            'new_name': 'apply_at_end_mask',
+            'default': 0,
+            'conversion': lambda x: x,
+        },
+    }
 
 class PulseData:
     nonetypes = [
@@ -41,7 +49,15 @@ class PulseData:
         fwd_frame1_mask=0,
         inv_frame0_mask=0,
         inv_frame1_mask=0,
+        **kwargs,
     ):
+        bad_keys = kwargs.keys()-DEPRECATED_KWARGS.keys()
+        if bad_keys:
+            e = TypeError(
+                    "PulseData() got an unexpected keyword argument(s): "
+                    f"{','.join(k for k in bad_keys)}")
+            logging.getLogger(__name__).error(e)
+            raise e
         self.channel = channel
         self.real_dur = dur
         self.dur = to_clock_cycles(dur, CLKFREQ)
@@ -66,6 +82,26 @@ class PulseData:
         self.old_hash = None
         self.binary_data = None
         self.delay = 0
+        for k,v in kwargs.items():
+            # allowed kwargs are spelled out, so we need to validate deprecated
+            # inputs after setting attributes. Because conversion functions are
+            # automatically applied, we need to check the default value after
+            # it's converted against the set value of the new argument.
+            if (getattr(self,DEPRECATED_KWARGS[k]['new_name']) !=
+                    DEPRECATED_KWARGS[k]['conversion'](DEPRECATED_KWARGS[k]['default'])):
+                e = DeprecationWarning(f"{k} is deprecated, "
+                                       f"use {DEPRECATED_KWARGS[k]['new_name']}, "
+                                       "but cannot use both!")
+                logging.getLogger(__name__).error(e)
+                raise e
+            else:
+                logging.getLogger(__name__).warning(
+                        PendingDeprecationWarning(
+                            f"{k} is deprecated, "
+                            f"use {DEPRECATED_KWARGS[k]['new_name']}"))
+                setattr(self,
+                        DEPRECATED_KWARGS[k]['new_name'],
+                        DEPRECATED_KWARGS[k]['conversion'](v))
 
     def __repr__(self):
         return (
