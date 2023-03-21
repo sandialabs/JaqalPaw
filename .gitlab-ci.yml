@@ -36,4 +36,10 @@ Unified Tests:
       ./jaqalpaq/install.sh
     - cd jaqalpaw
     - pip install -e .[tests]
-    - pytest
+    - pytest --junit-xml=./artifacts/unittest.xml
+  artifacts:
+    when: always
+    paths:
+      - artifacts/unittest.xml
+    reports:
+      junit: artifacts/unittest.xml

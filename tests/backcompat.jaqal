@@ -1,0 +1,10 @@
+from test_backcompat.TestGatePulses usepulses *
+
+register q[2]
+
+prepare_all
+G0 q[0]
+G1 q[0]
+Sy q[0]
+Sx q[0]
+measure_all
