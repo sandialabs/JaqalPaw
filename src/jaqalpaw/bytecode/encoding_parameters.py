@@ -45,8 +45,10 @@ else:
 # the number of supported hardware input lines for ancilla readout but sets
 # the offset for a GLUT programming word for where the LSB of the hardware
 # input register should start.
-ANCILLA_COMPILER_TAG_BIT = 11  # bit used for tagging an ancilla sequence in GLUT
 ANCILLA_STATE_LSB = 7  # number of bits to shift readout result in gate id
+ANCILLA_COMPILER_TAG_BIT = 11  # bit used for tagging an ancilla sequence in GLUT
+ANCILLA_ADDR_START = (1 << ANCILLA_COMPILER_TAG_BIT)
+ANCILLA_ADDR_STOP = (1 << (ANCILLA_COMPILER_TAG_BIT + 1))
 
 # Metadata values for the programming mode to indicate target LUT
 PROGPLUT = 3

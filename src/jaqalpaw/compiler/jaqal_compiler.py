@@ -21,6 +21,8 @@ from jaqalpaw.utilities.datatypes import Loop, to_clock_cycles, Branch, Case
 from jaqalpaw.utilities.exceptions import CircuitCompilerException, LUTOverflowException
 from jaqalpaw.utilities.parameters import CLKFREQ
 from jaqalpaw.bytecode.encoding_parameters import (
+    ANCILLA_ADDR_START,
+    ANCILLA_ADDR_STOP,
     ANCILLA_COMPILER_TAG_BIT,
     ANCILLA_STATE_LSB,
     CHANNELS_PER_BOARD,
@@ -35,6 +37,15 @@ from jaqalpaw.bytecode.encoding_parameters import (
 )
 from ..ir.circuit_constructor_visitor import populate_gate_slice
 from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
+
+# We basically want a large number here. BRANCH_PRIORITY_OFFSET is an
+# artificial correction to the number of occurrences of a gate, which is used
+# to prioritize programming. By introducing a large offset, gates in branch
+# sequences are given the highest priority, followed by gates that occur with
+# the highest frequency. In the event of an overflow, this will allow gates to
+# be interleaved with compressed sequences and direct streaming data in which
+# case branch sequences MUST be compressed to work with the ancilla bitmask
+BRANCH_PRIORITY_OFFSET = 1e12
 
 flatten = lambda x: [y for l in x for y in l]
 group_adjacent = lambda a, k: zip(*([iter(a)] * k))
@@ -116,6 +127,7 @@ class CircuitCompiler(CircuitConstructor):
         self.cclist = []
         self.flattened_slice_list = None
         self.boardseqdata = None
+        self.circuit_has_branches = False
 
     @property
     def num_boards(self):
@@ -427,7 +439,7 @@ class CircuitCompiler(CircuitConstructor):
                 self.walk_slice(
                     case,
                     gate_hashes=inner_gate_hashes,
-                    reps=reps,
+                    reps=reps+BRANCH_PRIORITY_OFFSET,
                     addr_offset=addr_offset,
                 )
             for k, v in inner_gate_hashes.items():
@@ -492,6 +504,8 @@ class CircuitCompiler(CircuitConstructor):
                     reverse=True,
                 )
             ):
+                if ANCILLA_ADDR_START <= numeric_gate_id < ANCILLA_ADDR_STOP:
+                    numeric_gate_id += (ANCILLA_ADDR_STOP - ANCILLA_ADDR_START)
                 self.ordered_gate_identifiers[ch][numeric_gate_id] = gate_hash
             # Create a temporary inverted dict that maps hash -> gate id
             inverted_ordered_gids = {
@@ -534,6 +548,7 @@ class CircuitCompiler(CircuitConstructor):
                 # collection of hashes that need to be equivalent across all
                 # possible ancilla states.
                 if isinstance(hash_or_branch, Branch):
+                    self.circuit_has_branches = True
                     branch_gate_sequence_ids = []
                     for case_index, case_gate_hashes in enumerate(hash_or_branch):
                         for sub_gate_id, (offset_addr, gate_hash) in enumerate(
@@ -631,10 +646,14 @@ class CircuitCompiler(CircuitConstructor):
                 npluttot += als[2]
                 if gatelimit:
                     luts_exceeded = True
-            logging.getLogger(__name__).debug(f"Total GLUT: before {gluttot}, after {ngluttot}, ratio: {ngluttot/gluttot}")
-            logging.getLogger(__name__).debug(f"Total MLUT: before {mluttot}, after {nmluttot}, ratio: {nmluttot/mluttot}")
-            logging.getLogger(__name__).debug(f"Total PLUT: before {pluttot}, after {npluttot}, ratio: {npluttot/pluttot}")
-            logging.getLogger(__name__).debug(f"Total Savings: {(ngluttot+nmluttot+npluttot)/(gluttot+mluttot+pluttot)}")
+            logging.getLogger(__name__).debug(
+                    f"Total GLUT: before {gluttot}, after {ngluttot}, ratio: {ngluttot/gluttot}")
+            logging.getLogger(__name__).debug(
+                    f"Total MLUT: before {mluttot}, after {nmluttot}, ratio: {nmluttot/mluttot}")
+            logging.getLogger(__name__).debug(
+                    f"Total PLUT: before {pluttot}, after {npluttot}, ratio: {npluttot/pluttot}")
+            logging.getLogger(__name__).debug(
+                    f"Total Savings: {(ngluttot+nmluttot+npluttot)/(gluttot+mluttot+pluttot)}")
             self.PLUT_data = cplut
             self.MMAP_data = cmlut
             self.GLUT_data = cglut
@@ -671,7 +690,8 @@ class CircuitCompiler(CircuitConstructor):
         # get address and data of all elements of PLUT, filter out the routing
         # data and add to a set for tracking unique data
         for pido, pdato in enumerate(plut):
-            nplutset[self.PLUT256to216(pdato,include_mod_type=False)] = int_to_bytes(bytes_to_int(pdato)&((1<<MODTYPE_LSB)-1))
+            nplutset[self.PLUT256to216(pdato,include_mod_type=False)] = \
+                    int_to_bytes(bytes_to_int(pdato)&((1<<MODTYPE_LSB)-1))
 
         # convert the set to a list so we can reliably retrieve the data's associated index
         nplutls = tuple(nplutset.keys())
@@ -726,9 +746,9 @@ class CircuitCompiler(CircuitConstructor):
             rglut[gr].append(gn)
         # walk the original GLUT
         for gido, gdato in glut.items():
-            if gido & (1<<ANCILLA_COMPILER_TAG_BIT):
+            if self.circuit_has_branches:
                 if self.gatelet_optimization:
-                    self.gatelet_optimization = False
+                    self.gatelet_optimization = 0
                     logging.getLogger(__name__).warning("gatelet optimization not yet allowed for circuits with branching")
             if len(rglut[gdato]) > 1 and gdato in glutrangeremap:
                 continue
@@ -736,12 +756,6 @@ class CircuitCompiler(CircuitConstructor):
             nmstartaddr = nmaddrcnt  # new GLUT address bounds need to be tracked independently
             localcount = 0
             # get the MLUT addresses
-            gateinvalid = False
-            if nmaddrcnt >= 1<<SLUTW:
-                    badgates.add(gido)
-                    gateinvalid = True
-            if gateinvalid:
-                continue
             for maddr in range(gdato[0],gdato[1]+1):
                 mdato = mlut[maddr]  # old MLUT data (old PLUT addr)
                 # check if remapped PLUT data has been encountered by looking at the remapped PLUT addr
@@ -824,11 +838,8 @@ class CircuitCompiler(CircuitConstructor):
             if self.validate_gatelet_optimization:
                 verify_distillation(ngsetmlut,nglutdist,gateTransList)
             for oldgid in gseq:
-                if oldgid & (1<<ANCILLA_COMPILER_TAG_BIT):
-                    raise CircuitCompilerException("gatelet optimization not yet supported with branching")
-                else:
-                    if oldgid not in badgates:
-                        new_gseq_list.extend(gateTransList[oldgid])
+                if oldgid not in badgates:
+                    new_gseq_list.extend(gateTransList[oldgid])
         else:
             new_gseq_list = gseq
             iteritem = enumerate(S)
@@ -842,6 +853,8 @@ class CircuitCompiler(CircuitConstructor):
                 if self.lut_overflow_handling != LUTOverflowHandling.InterleavedStream:
                     raise LUTOverflowException("GLUT filling exceeded")
                 else:
+                    logging.getLogger(__name__).debug(
+                            f"GLUT filling exceeded at gate: {gid}, remaining gates will be interleaved")
                     gatelimit = min(gatelimit, gid)
                     if gateTransList:
                         for ogid, glist in gateTransList.items():
@@ -854,6 +867,10 @@ class CircuitCompiler(CircuitConstructor):
             maddrstart = maddrctr
             for maddr in gdat:
                 if maddrctr >= 1<<SLUTW or (maddr&((1<<PLUTWEXT)-1)) >= 1<<PLUTW:
+                    if maddrctr >= 1<<SLUTW:
+                        logging.getLogger(__name__).debug(f"MLUT filling exceeded in gate: {gid}")
+                    else:
+                        logging.getLogger(__name__).debug(f"PLUT filling exceeded in gate: {gid}")
                     gatelimit = min(gatelimit, gid)
                     if gateTransList:
                         for ogid, glist in gateTransList.items():
@@ -870,38 +887,13 @@ class CircuitCompiler(CircuitConstructor):
             if gid & (1<<ANCILLA_COMPILER_TAG_BIT):
                 glutfin[gid] = glutrangeremap[glut[gid]]
 
-        # check MLUT packing, this does not involve gatelet optimization, but
-        # trying to keep settings to a minimum
-        if self.validate_gatelet_optimization and False:
-            oldlist = [[] for _ in range(self.channel_num)]
-            newlist = [[] for _ in range(self.channel_num)]
-            for oldgid in gseq:
-                start, stop = glut[oldgid]
-                for mmm in range(start,stop+1):
-                    mdat = mlut[mmm]
-                    pdat = plut[mdat]
-                    tind= (bytes_to_int(pdat)>>MODTYPE_LSB)&0b111
-                    oldlist[tind].append(pdat)
-            for newgid in new_gseq_list:
-                start, stop = glutfin[newgid]
-                for mmm in range(start,stop+1):
-                    mdat = mlutfin[mmm]
-                    addr = mdat & ((1<<PLUTW)-1)
-                    rout = mdat >> PLUTW
-                    pdat = plutfin[addr]
-                    for n in range(CHANNELS_PER_BOARD):
-                        if (rout>>n)&1:
-                            newlist[n].append(int_to_bytes(bytes_to_int(pdat)|(n<<MODTYPE_LSB)))
-            for n in range(self.channel_num):
-                if not all(ol == ne for ol,ne in zip(oldlist[n], newlist[n])):
-                    logging.getLogger(__name__).error(f"packed representation doesn't match on channel {n}")
-                    for ol,ne in zip(oldlist[n], newlist[n]):
-                        logging.getLogger(__name__).debug(f"ORIGINAL: {bytes_to_int(ol):064x} PACKED: {bytes_to_int(ne):064x}")
-
         logging.getLogger(__name__).debug(f"FINAL LENGTHS: ch{chidx}")
-        logging.getLogger(__name__).debug(f" GLUT: was {len(glut)} now {len(glutfin)} reduction {len(glutfin)/len(glut)}")
-        logging.getLogger(__name__).debug(f" MLUT: was {len(mlut)} now {len(mlutfin)} reduction {len(mlutfin)/len(mlut)}")
-        logging.getLogger(__name__).debug(f" PLUT: was {len(plut)} now {len(plutfin)} reduction {len(plutfin)/len(plut)}")
+        logging.getLogger(__name__).debug(
+                f" GLUT: was {len(glut)} now {len(glutfin)} reduction {len(glutfin)/len(glut)}")
+        logging.getLogger(__name__).debug(
+                f" MLUT: was {len(mlut)} now {len(mlutfin)} reduction {len(mlutfin)/len(mlut)}")
+        logging.getLogger(__name__).debug(
+                f" PLUT: was {len(plut)} now {len(plutfin)} reduction {len(plutfin)/len(plut)}")
 
         return (
                 glutfin,
