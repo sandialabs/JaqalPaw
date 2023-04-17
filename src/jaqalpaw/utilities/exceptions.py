@@ -12,3 +12,7 @@ class CircuitCompilerException(Exception):
 
 class LUTOverflowException(Exception):
     pass
+
+
+class BranchOverflowException(Exception):
+    pass

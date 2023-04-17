@@ -29,11 +29,13 @@ from jaqalpaw.bytecode.encoding_parameters import (
     DMA_MUX_LSB,
     ENABLE_MLUT_PACKING,
     GLUTW,
+    GPRGW,
     MODTYPE_LSB,
     PLUTW,
     PROG_MODE_LSB,
     SLUTW,
     VERSION,
+    VIRTUAL_ANCILLA_TAG_BIT,
 )
 from ..ir.circuit_constructor_visitor import populate_gate_slice
 from jaqalpaw.bytecode.binary_conversion import int_to_bytes, bytes_to_int
@@ -89,14 +91,14 @@ class CircuitCompiler(CircuitConstructor):
         code_literal=None,
         slice_list=None,
         gatelet_optimization=GateletOptimizationType.OptimizeIfNecessary,
-        lut_overflow_handling=LUTOverflowHandling.RaiseException,
+        lut_overflow_handling=LUTOverflowHandling.InterleavedStream,
     ):
         super().__init__(num_channels, pulse_definition)
         self.file = file
         self.code_literal = code_literal
         self.gatelet_optimization = gatelet_optimization
         self.lut_overflow_handling = lut_overflow_handling
-        self.max_gatelet_opt_iterations = 10
+        self.max_gatelet_opt_iterations = 100
         self.gatelet_opt_fitness_target = 0
         self.validate_gatelet_optimization = False  # enable for debugging
         self.binary_data = defaultdict(list)
@@ -504,8 +506,6 @@ class CircuitCompiler(CircuitConstructor):
                     reverse=True,
                 )
             ):
-                if ANCILLA_ADDR_START <= numeric_gate_id < ANCILLA_ADDR_STOP:
-                    numeric_gate_id += (ANCILLA_ADDR_STOP - ANCILLA_ADDR_START)
                 self.ordered_gate_identifiers[ch][numeric_gate_id] = gate_hash
             # Create a temporary inverted dict that maps hash -> gate id
             inverted_ordered_gids = {
@@ -562,7 +562,7 @@ class CircuitCompiler(CircuitConstructor):
                             if case_index == 0:
                                 branch_gate_sequence_ids.append(
                                     (sub_gate_id + initlen)
-                                    | (1 << ANCILLA_COMPILER_TAG_BIT)
+                                    | (1 << VIRTUAL_ANCILLA_TAG_BIT)
                                 )
                             self.branches[ch][branch_index_counter[ch]][
                                 offset_addr
@@ -607,7 +607,7 @@ class CircuitCompiler(CircuitConstructor):
                     gind = 0
                     for subgid in glist:
                         self.GLUT_data[ch][
-                            (startind + state + gind) | (1 << ANCILLA_COMPILER_TAG_BIT)
+                            (startind + state + gind) | (1 << VIRTUAL_ANCILLA_TAG_BIT)
                         ] = self.GLUT_data[ch][subgid]
                         gind += 1
                 startind += maxlen
@@ -750,6 +750,8 @@ class CircuitCompiler(CircuitConstructor):
                 if self.gatelet_optimization:
                     self.gatelet_optimization = 0
                     logging.getLogger(__name__).warning("gatelet optimization not yet allowed for circuits with branching")
+            if gido > (1<<GLUTW):
+                self.gatelet_optimization = 0
             if len(rglut[gdato]) > 1 and gdato in glutrangeremap:
                 continue
             lmdatotrack = defaultdict(list)
@@ -822,9 +824,10 @@ class CircuitCompiler(CircuitConstructor):
         # by sequencing two gatelet identifiers. This will prevent the MLUT
         # from filling up if single qubit gates
         new_gseq_list = []
-        if (self.gatelet_optimization > GateletOptimizationType.OptimizeIfNecessary
+        if ((self.gatelet_optimization > GateletOptimizationType.OptimizeIfNecessary
             or (self.gatelet_optimization == GateletOptimizationType.OptimizeIfNecessary
-                and sum(map(len,S))>(1<<SLUTW))):
+                and sum(map(len,S))>(1<<SLUTW)))
+            and len(glut) < (1<<GLUTW)):
             if self.validate_gatelet_optimization:
                 Sinit = S
             if self.lut_overflow_handling == LUTOverflowHandling.InterleavedStream:
@@ -848,22 +851,31 @@ class CircuitCompiler(CircuitConstructor):
         mlutfin = dict()
         plutfin = tuple(nplutset.values())
         maddrctr = 0
+        glut_filling_ok = True
         for gid, gdat in iteritem:
+            if gid & (1<<VIRTUAL_ANCILLA_TAG_BIT):
+                continue # these are handled in the next loop
             if gid >= 1<<GLUTW:
                 if self.lut_overflow_handling != LUTOverflowHandling.InterleavedStream:
                     raise LUTOverflowException("GLUT filling exceeded")
                 else:
-                    logging.getLogger(__name__).debug(
-                            f"GLUT filling exceeded at gate: {gid}, remaining gates will be interleaved")
-                    gatelimit = min(gatelimit, gid)
+                    if glut_filling_ok:
+                        # just want to trigger the debug message once
+                        logging.getLogger(__name__).debug(
+                                f"GLUT filling exceeded at gate: {gid}, remaining gates will be interleaved")
+                        glut_filling_ok = False
                     if gateTransList:
+                        bad_trans_gate = False
                         for ogid, glist in gateTransList.items():
                             for ngid in glist:
                                 if ngid >= 1<<GLUTW:
+                                    bad_trans_gate = True
                                     badgates.add(ogid)
+                        if bad_trans_gate:
+                            continue
                     else:
                         badgates.add(gid)
-                    break
+                        continue
             maddrstart = maddrctr
             for maddr in gdat:
                 if maddrctr >= 1<<SLUTW or (maddr&((1<<PLUTWEXT)-1)) >= 1<<PLUTW:
@@ -871,7 +883,6 @@ class CircuitCompiler(CircuitConstructor):
                         logging.getLogger(__name__).debug(f"MLUT filling exceeded in gate: {gid}")
                     else:
                         logging.getLogger(__name__).debug(f"PLUT filling exceeded in gate: {gid}")
-                    gatelimit = min(gatelimit, gid)
                     if gateTransList:
                         for ogid, glist in gateTransList.items():
                             if gid in glist:
@@ -884,7 +895,7 @@ class CircuitCompiler(CircuitConstructor):
             else:
                 glutfin[gid] = (maddrstart, maddrctr-1)
         for gid in glut.keys():
-            if gid & (1<<ANCILLA_COMPILER_TAG_BIT):
+            if gid & (1<<VIRTUAL_ANCILLA_TAG_BIT):
                 glutfin[gid] = glutrangeremap[glut[gid]]
 
         logging.getLogger(__name__).debug(f"FINAL LENGTHS: ch{chidx}")
@@ -1155,7 +1166,7 @@ class CircuitCompiler(CircuitConstructor):
         gpres = self.generate_programming_data()
         slice_ind = None
         if gpres:
-            if self.lut_overflow_handling == LUTOverflowHandling.RaiseException:
+            if self.lut_overflow_handling in (LUTOverflowHandling.RaiseException, LUTOverflowHandling.StreamDataDirectly):
                 raise LUTOverflowException("LUT capacity exceeded")
             slice_ind = min(gpres)
             # Find the longest gate within a reasonable range to inject
@@ -1479,6 +1490,8 @@ class CircuitCompiler(CircuitConstructor):
                 if self.lut_overflow_handling == LUTOverflowHandling.StreamDataDirectly:
                     logging.getLogger(__name__).info("couldn't fit data into LUTs, streaming directly")
                     self.gateTransList = [None]*self.channel_num
+                    if combine_subcircuits:
+                        return [[] for _ in range(self.num_boards)], self.streaming_data_from_luts(channel_mask)
                     return [[] for _ in range(self.num_boards)], self.subcircuit_streaming_data_from_luts(channel_mask)
                 raise e
         self.final_byte_dict = defaultdict(list)
@@ -1604,7 +1617,7 @@ def optimluts(glut, glutmap=None, limit=None):
     case at this level). Find the optical target gatelet and separate it from
     the relevant gates."""
     if glutmap is None:
-        glutmap = {i:(i,) for i in range(len(glut))}
+        glutmap = {i:(i,) for i in glut.keys()}
     glutr = {k:tuple(reversed(v)) for k,v in glut.items()}
     tf = make_glut_tree(glut)
     tfr = make_glut_tree(glutr)

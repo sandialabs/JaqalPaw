@@ -1,4 +1,4 @@
-from jaqalpaw.utilities.exceptions import CircuitCompilerException
+from jaqalpaw.utilities.exceptions import CircuitCompilerException, BranchOverflowException
 from jaqalpaw.bytecode.encoding_parameters import (
     CHANNELS_PER_BOARD,
     DMA_MUX_LSB,
@@ -24,6 +24,7 @@ from jaqalpaw.bytecode.encoding_parameters import (
     ANCILLA_COMPILER_TAG_BIT,
     PER_BOARD_CH_MASK,
     VERSION,
+    VIRTUAL_ANCILLA_TAG_BIT,
     GateSequenceMode,
 )
 
@@ -92,25 +93,11 @@ def program_SLUT(lut, ch=0, offset=0):
     BYTELIM = SLUT_BYTECNT
     for addr, data in lut.items():
         if address_is_invalid(addr, SLUTW):
-            current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
+            current_byte |= channel_routing_data(ch)
             current_byte |= PROGSLUT << PROG_MODE_LSB
             current_byte |= byte_count << SLUT_BYTECNT_LSB
             slut_PROG_list.append(int_to_bytes(current_byte))
             return slut_PROG_list, addr
-            raise CircuitCompilerException(
-                f"MMAP LUT programming error, address {addr} ({bin(addr)}) "
-                f"exceeds maximum width of {SLUTW}"
-            )
-        # if address_is_invalid(data, PLUTW):
-        #     current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
-        #     current_byte |= PROGSLUT << PROG_MODE_LSB
-        #     current_byte |= byte_count << SLUT_BYTECNT_LSB
-        #     slut_PROG_list.append(int_to_bytes(current_byte))
-        #     return slut_PROG_list, addr
-        #     raise CircuitCompilerException(
-        #         f"MMAP LUT programming error, data {data} ({bin(data)}) "
-        #         f"exceeds maximum width of {PLUTW}"
-        #     )
         if byte_count >= BYTELIM:
             current_byte |= channel_routing_data(ch)
             current_byte |= PROGSLUT << PROG_MODE_LSB
@@ -129,6 +116,18 @@ def program_SLUT(lut, ch=0, offset=0):
     return slut_PROG_list, None
 
 
+def remap_branch_address(addr):
+    """If interleaved stream is used for overflow handling, it's much easier to
+       use a contiguous address space for normal gates and offset branch sequence
+       gates into a much higher address space. But for programming, we need to
+       recast the address into the correct space for programming as done here."""
+    if addr & (1<<VIRTUAL_ANCILLA_TAG_BIT):
+        if addr & (1<<ANCILLA_COMPILER_TAG_BIT):
+            raise BranchOverflowException("Branch gate exceeds bounds!")
+        return addr ^ ((1<<VIRTUAL_ANCILLA_TAG_BIT) | (1<<ANCILLA_COMPILER_TAG_BIT))
+    return addr
+
+
 def program_GLUT(lut, ch=0):
     """Generate programming data for the GLUT"""
     glut_PROG_list = []
@@ -136,28 +135,12 @@ def program_GLUT(lut, ch=0):
     byte_count = 0
     BYTELIM = GLUT_BYTECNT
     for addr, data in lut.items():
+        addr = remap_branch_address(addr)
         if address_is_invalid(addr, GPRGW):
-            current_byte |= (ch & PER_BOARD_CH_MASK) << DMA_MUX_LSB
-            current_byte |= PROGGLUT << PROG_MODE_LSB
-            current_byte |= byte_count << GLUT_BYTECNT_LSB
-            glut_PROG_list.append(int_to_bytes(current_byte))
-            return glut_PROG_list, addr
-            raise CircuitCompilerException(
-                f"GLUT programming error, address {addr} ({bin(addr)}) "
-                f"exceeds maximum width of {GPRGW}"
-            )
-        # if address_is_invalid(data[0], SLUTW):
-        #     return glut_PROG_list, addr
-        #     raise CircuitCompilerException(
-        #         f"GLUT programming error, high data {data[0]} ({bin(data[0])}) "
-        #         f"exceeds maximum width of {SLUTW}"
-        #     )
-        # if address_is_invalid(data[1], SLUTW):
-        #     return glut_PROG_list, addr
-        #     raise CircuitCompilerException(
-        #         f"GLUT programming error, high data {data[1]} ({bin(data[1])}) "
-        #         f"exceeds maximum width of {SLUTW}"
-        #     )
+            # only store valid addresses, for interleaved stream. Overflow
+            # handling otherwise handled in jaqal_compiler.py, but need to
+            # handle branch sequences so continue through rest of elements
+            continue  
         if byte_count >= BYTELIM:
             current_byte |= channel_routing_data(ch)
             current_byte |= PROGGLUT << PROG_MODE_LSB
@@ -202,7 +185,8 @@ def gate_sequence_bytes(glist, ch=0):
     BYTELIM = GSEQ_BYTECNT
     wait_for_ancilla = GateSequenceMode.standard
     for g in glist:
-        if g & (1 << ANCILLA_COMPILER_TAG_BIT):
+        if g & (1 << VIRTUAL_ANCILLA_TAG_BIT):
+            g ^= (1 << VIRTUAL_ANCILLA_TAG_BIT) | (1 <<ANCILLA_COMPILER_TAG_BIT)
             if wait_for_ancilla == GateSequenceMode.standard:
                 tag_gseq_metadata(gseq, current_byte, byte_count, ch, wait_for_ancilla)
                 current_byte = 0
