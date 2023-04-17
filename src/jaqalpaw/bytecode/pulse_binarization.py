@@ -336,9 +336,12 @@ def generate_single_pulse_bytes(
     """prints out coefficient data with wait times in between.
     pow gives an overall scale factor to the data of 2**pow,
     and converts the coefficients to integers"""
-    bytelist = map_to_bytes(
-        [int(coeff), 0, 0, 0, int(wait)]
-    )  # v0, v1, v2, v3, duration
+    try:
+        bytelist = map_to_bytes(
+            [int(coeff), 0, 0, 0, int(wait)]
+        )  # v0, v1, v2, v3, duration
+    except Exception as e:
+        raise Exception(f"{e}: modtype: {modtype} coeff: {coeff} wait: {wait}")
     final_bytes = apply_metadata(
         bytelist,
         modtype=modtype,
