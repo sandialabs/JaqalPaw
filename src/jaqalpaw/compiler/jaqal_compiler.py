@@ -98,7 +98,7 @@ class CircuitCompiler(CircuitConstructor):
         self.code_literal = code_literal
         self.gatelet_optimization = gatelet_optimization
         self.lut_overflow_handling = lut_overflow_handling
-        self.max_gatelet_opt_iterations = 100
+        self.max_gatelet_opt_iterations = 10
         self.gatelet_opt_fitness_target = 0
         self.validate_gatelet_optimization = False  # enable for debugging
         self.binary_data = defaultdict(list)
@@ -1692,6 +1692,8 @@ def optim_reasonable(glut, bound=None):
        entries is less than the bound."""
     mlutflat=[mlutdat for mlutl in glut.values() for mlutdat in mlutl]
     mlutc = set(mlutflat)
+    if len(glut.values()) >= (1<<GLUTW):
+        return True, len(mlutflat)
     if bound:
         if len(mlutc) < bound and len(mlutflat) > bound:
             return True, len(mlutflat)
