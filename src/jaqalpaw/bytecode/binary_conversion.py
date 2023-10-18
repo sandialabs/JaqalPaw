@@ -68,7 +68,14 @@ def convert_phase_full_mod_2pi(phsw):
         phsw -= 360
     elif phsw < -180:
         phsw += 360
-    convf = int(round(phsw / 360.0 * (1 << 40)))
+    bits = 40
+    convf = int(round(phsw / 360.0 * (1 << bits)))
+    llimit = -(1 << (bits - 1))
+    ulimit = (1 << (bits - 1)) - 1
+    if convf < llimit:
+        convf = llimit
+    if convf > ulimit:
+        convf = ulimit
     return convf
 
 
