@@ -4,7 +4,7 @@ VERSION = 2
 ENABLE_MLUT_PACKING = True
 if VERSION == 2:
     # needed for updated metadata mapping to work with HW
-    ENABLE_MLUT_PACKING = True 
+    ENABLE_MLUT_PACKING = True
 
 # use scipy.interpolate.CubicSpline instead of custom library
 PYSPLINE = True

@@ -140,7 +140,7 @@ def program_GLUT(lut, ch=0):
             # only store valid addresses, for interleaved stream. Overflow
             # handling otherwise handled in jaqal_compiler.py, but need to
             # handle branch sequences so continue through rest of elements
-            continue  
+            continue
         if byte_count >= BYTELIM:
             current_byte |= channel_routing_data(ch)
             current_byte |= PROGGLUT << PROG_MODE_LSB

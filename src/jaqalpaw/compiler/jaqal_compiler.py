@@ -831,7 +831,7 @@ class CircuitCompiler(CircuitConstructor):
             if self.validate_gatelet_optimization:
                 Sinit = S
             if self.lut_overflow_handling == LUTOverflowHandling.InterleavedStream:
-                maxiter = self.max_gatelet_opt_iterations 
+                maxiter = self.max_gatelet_opt_iterations
             else:
                 maxiter = None
             nglutdist, gateTransList, mlutsize = distill_gatelets(ngsetmlut, 1<<SLUTW, maxiter=maxiter)
@@ -967,7 +967,7 @@ class CircuitCompiler(CircuitConstructor):
         # its programming data. If it's valid, append sequence data, otherwise
         # append direct streaming data. Even though an overflow might only
         # occur on a single channel for any given slice, we still stream the
-        # entire slice. The reason for this is twofold: 
+        # entire slice. The reason for this is twofold:
         #   1) Asymmetry in the sequence data caused by gatelet distillation is
         #      likely to pose more issues when interleaving with direct
         #      streaming data. By defining strict time boundaries at each
@@ -1419,7 +1419,7 @@ class CircuitCompiler(CircuitConstructor):
         partial_gs_ids = self.generate_gate_sequence_subcircuits_inds_only()
         partial_GSEQ_bin = dict()
         for ch in partial_gs_ids:
-            partial_GSEQ_bin[ch] = list(map(lambda x: gate_sequence_bytes(x,ch), 
+            partial_GSEQ_bin[ch] = list(map(lambda x: gate_sequence_bytes(x,ch),
                                             partial_gs_ids[ch]))
         return partial_GSEQ_bin
 

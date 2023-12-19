@@ -176,4 +176,3 @@ class GateSlice:
 
     def all_durations_equal(self):
         return all(map(self.total_duration, self.channel_data.keys()))
-
