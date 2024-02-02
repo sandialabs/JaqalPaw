@@ -1,6 +1,7 @@
 from .ex4 usepulses *
 register q[3]
 
+prepare_all
 loop 4 {
 	G q[2]
 	gap q[2]
@@ -11,3 +12,4 @@ loop 4 {
 }
 
 G_gap_multi q[2] 4
+measure_all

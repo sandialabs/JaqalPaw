@@ -1,8 +1,22 @@
 from .examples_iii_a usepulses *
-register q[5]
+register q[6]
 
-G5 q[0]
-G6 q[1]
-G7 q[2]
-G8 q[3]
-G9 q[4]
+subcircuit {
+  G5 q[1]
+}
+
+subcircuit {
+  G6 q[2]
+}
+
+subcircuit {
+  G7 q[3]
+}
+
+subcircuit {
+  G8 q[4]
+}
+
+subcircuit {
+  G9 q[5]
+}

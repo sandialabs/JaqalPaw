@@ -1,4 +1,6 @@
 from .ex14 usepulses *
 register q[3]
 
+prepare_all
 G q[1] q[2]
+measure_all

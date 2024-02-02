@@ -1,4 +1,6 @@
 from .examples_iv usepulses *
 register q[3]
 
+prepare_all
 < G_coprop q[1] | G_counterprop q[2] >
+measure_all

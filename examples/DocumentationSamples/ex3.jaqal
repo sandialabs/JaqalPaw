@@ -1,6 +1,8 @@
 from .ex3 usepulses *
 register q[3]
 
+prepare_all
 loop 4 {
 	G q[2]
 }
+measure_all
