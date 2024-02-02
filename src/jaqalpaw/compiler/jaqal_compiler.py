@@ -6,6 +6,7 @@ import logging
 from itertools import chain, zip_longest
 from functools import reduce
 from enum import IntEnum
+import collections
 
 from jaqalpaw.ir.circuit_constructor import CircuitConstructor
 from jaqalpaw.ir.gate_slice import GateSlice
@@ -138,6 +139,14 @@ class CircuitCompiler(CircuitConstructor):
     def set_global_delay(self, global_delay=None):
         if global_delay is None:
             self.delay_settings = None
+        elif isinstance(global_delay, collections.abc.Iterable):
+            shortest_time = min(0,min(global_delay))
+            default_delay = abs(min(0,shortest_time))
+            self.delay_settings = defaultdict(
+                lambda: to_clock_cycles(default_delay, CLKFREQ)
+            )
+            for i,d in enumerate(global_delay):
+                self.delay_settings[i] = to_clock_cycles(d - shortest_time, CLKFREQ)
         else:
             default_delay = 0
             if global_delay < 0:
