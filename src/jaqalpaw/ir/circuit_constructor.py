@@ -1,7 +1,7 @@
 from pathlib import Path
 from jaqalpaq.parser import parse_jaqal_string, parse_jaqal_file
 from jaqalpaq.parser.parser import parse_jaqal_string_header, parse_jaqal_file_header
-from jaqalpaq.core.algorithm import expand_macros, fill_in_let
+from jaqalpaq.core.algorithm import expand_macros, fill_in_let, expand_subcircuits
 
 from .circuit_constructor_visitor import convert_circuit_to_gateslices
 from .pulse_data import PulseData
@@ -88,6 +88,10 @@ class CircuitConstructor:
                 usepulses = extra["usepulses"]
                 self.gate_pulse_info = list(usepulses.keys())[0]
             self.base_circuit = expand_macros(circuit)
+            # we still rely on prepare_all/measure_all as gates/macros with
+            # explicit definitions, so we want to add the actual calls back in
+            # for any `subcircuit` calls.
+            self.base_circuit = expand_subcircuits(self.base_circuit)
 
         if override_dict is not None:
             self.circuit = fill_in_let(self.base_circuit, override_dict)
