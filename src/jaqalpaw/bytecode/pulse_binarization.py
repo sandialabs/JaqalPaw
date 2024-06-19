@@ -15,6 +15,7 @@ from .encoding_parameters import (
     MODTYPE_LSB_LOC,
     OUTPUT_EN_LSB_LOC,
     FRQ_FB_EN_LSB_LOC,
+    AMP_FB_EN_LSB_LOC,
     PYSPLINE,
     SPLSHIFT_LSB_LOC,
     VERSION,
@@ -64,6 +65,7 @@ def apply_metadata(
     fwd_frame1_mask=0,
     inv_frame0_mask=0,
     inv_frame1_mask=0,
+    gpo_mask=0,
     ind=0,
 ):
     """Apply all metadata bits based on input flags, for splines, certain metadata bits are applied only
@@ -81,17 +83,19 @@ def apply_metadata(
     fb_enable = 0
     fwd_frame = 0
     inv_frame = 0
+    gpo = 0
     tone_mask = 0b01 if modtype & 0b111 else 0b10
     if not (modtype & 0b11000000):  # frame_rot (z rotations)
         output_en = 1 << OUTPUT_EN_LSB_LOC if (enable_mask & tone_mask) else 0
         fb_enable = 1 << FRQ_FB_EN_LSB_LOC if (fb_enable_mask & tone_mask) else 0
+        gpo = 1 << AMP_FB_EN_LSB_LOC if (gpo_mask & tone_mask) else 0
     elif modtype & 0b01000000:
         fwd_frame = (0b11 & fwd_frame0_mask) << FWD_FRM_T0_LSB_LOC
         inv_frame = (0b11 & inv_frame0_mask) << INV_FRM_T0_LSB_LOC
     elif modtype & 0b10000000:
         fwd_frame = (0b11 & fwd_frame1_mask) << FWD_FRM_T0_LSB_LOC
         inv_frame = (0b11 & inv_frame1_mask) << INV_FRM_T0_LSB_LOC
-    metadata |= output_en | fb_enable | fwd_frame | inv_frame
+    metadata |= output_en | fb_enable | fwd_frame | inv_frame | gpo
     if ind == 0:
         sync = 0
         clr_frame = 0
@@ -134,6 +138,7 @@ def generate_bytes(
     fwd_frame1_mask=0,
     inv_frame0_mask=0,
     inv_frame1_mask=0,
+    gpo_mask=0,
 ):
     """Generate binary data for contiguous, spline pulses. Used when pulse()
     is called and a parameter is specified by a typle"""
@@ -166,6 +171,7 @@ def generate_bytes(
             fwd_frame1_mask=fwd_frame1_mask,
             inv_frame0_mask=inv_frame0_mask,
             inv_frame1_mask=inv_frame1_mask,
+            gpo_mask=gpo_mask,
             ind=n,
         )
         final_bytes = final_bytes + fullbytes
@@ -190,6 +196,7 @@ def generate_pulse_bytes(
     fwd_frame1_mask=0,
     inv_frame0_mask=0,
     inv_frame1_mask=0,
+    gpo_mask=0,
 ):
     """Generate binary data for contiguous, discrete pulses. Used when pulse()
     is called and a parameter is specified by a list"""
@@ -217,6 +224,7 @@ def generate_pulse_bytes(
             fwd_frame1_mask=fwd_frame1_mask,
             inv_frame0_mask=inv_frame0_mask,
             inv_frame1_mask=inv_frame1_mask,
+            gpo_mask=gpo_mask,
             ind=n,
         )
         final_bytes = final_bytes + fullbytes
@@ -243,6 +251,7 @@ def generate_spline_bytes(
     fwd_frame1_mask=0,
     inv_frame0_mask=0,
     inv_frame1_mask=0,
+    gpo_mask=0,
 ):
     """Generates spline coefficients, remaps them for a pdq spline and gets the corresponding byte data."""
     if pulse_mode:
@@ -262,6 +271,7 @@ def generate_spline_bytes(
             fwd_frame1_mask=fwd_frame1_mask,
             inv_frame0_mask=inv_frame0_mask,
             inv_frame1_mask=inv_frame1_mask,
+            gpo_mask=gpo_mask,
             channel=channel,
         )
     else:
@@ -311,6 +321,7 @@ def generate_spline_bytes(
             fwd_frame1_mask=fwd_frame1_mask,
             inv_frame0_mask=inv_frame0_mask,
             inv_frame1_mask=inv_frame1_mask,
+            gpo_mask=gpo_mask,
             channel=channel,
         )
     return final_byte_list
@@ -332,6 +343,7 @@ def generate_single_pulse_bytes(
     fwd_frame1_mask=0,
     inv_frame0_mask=0,
     inv_frame1_mask=0,
+    gpo_mask=0,
 ):
     """prints out coefficient data with wait times in between.
     pow gives an overall scale factor to the data of 2**pow,
@@ -357,6 +369,7 @@ def generate_single_pulse_bytes(
         fwd_frame1_mask=fwd_frame1_mask,
         inv_frame0_mask=inv_frame0_mask,
         inv_frame1_mask=inv_frame1_mask,
+        gpo_mask=gpo_mask,
     )
     return final_bytes, [final_bytes]
 
@@ -378,6 +391,7 @@ def binarize_parameter(
     fwd_frame1_mask,
     inv_frame0_mask,
     inv_frame1_mask,
+    gpo_mask,
     DDS,
 ):
     """This function is responsible for determining which method to use for
@@ -414,6 +428,7 @@ def binarize_parameter(
                     fwd_frame1_mask=fwd_frame1_mask,
                     inv_frame0_mask=inv_frame0_mask,
                     inv_frame1_mask=inv_frame1_mask,
+                    gpo_mask=gpo_mask,
                     DDS=DDS,
                 )
             )
@@ -453,6 +468,7 @@ def binarize_parameter(
                 fwd_frame1_mask=fwd_frame1_mask,
                 inv_frame0_mask=inv_frame0_mask,
                 inv_frame1_mask=inv_frame1_mask,
+                gpo_mask=gpo_mask,
                 channel=DDS,
             )
             bytelist.extend(final_byte_list)
@@ -487,6 +503,7 @@ def binarize_parameter(
                     fwd_frame1_mask=fwd_frame1_mask,
                     inv_frame0_mask=inv_frame0_mask,
                     inv_frame1_mask=inv_frame1_mask,
+                    gpo_mask=gpo_mask,
                     channel=DDS,
                 )
             )
@@ -506,6 +523,7 @@ def binarize_parameter(
             fwd_frame1_mask=fwd_frame1_mask,
             inv_frame0_mask=inv_frame0_mask,
             inv_frame1_mask=inv_frame1_mask,
+            gpo_mask=gpo_mask,
             channel=DDS,
         )
         bytelist.append(lbytes)
@@ -533,6 +551,7 @@ def pulse(
     fwd_frame1_mask=0,
     inv_frame0_mask=0,
     inv_frame1_mask=0,
+    gpo_mask=0,
     bypass=False,
 ):
     """Generates the binary data that needs to be uploaded to the chip from a set of input parameters"""
@@ -628,6 +647,7 @@ def pulse(
                 fwd_frame1_mask=fwd_frame1_mask,
                 inv_frame0_mask=inv_frame0_mask,
                 inv_frame1_mask=inv_frame1_mask,
+                gpo_mask=gpo_mask,
                 DDS=DDS,
             )
         )

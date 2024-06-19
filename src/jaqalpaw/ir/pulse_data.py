@@ -50,6 +50,7 @@ class PulseData:
         fwd_frame1_mask=0,
         inv_frame0_mask=0,
         inv_frame1_mask=0,
+        gpo_mask=0,
         **kwargs,
     ):
         bad_keys = kwargs.keys()-DEPRECATED_KWARGS.keys()
@@ -80,6 +81,7 @@ class PulseData:
         self.fwd_frame1_mask = fwd_frame1_mask
         self.inv_frame0_mask = inv_frame0_mask
         self.inv_frame1_mask = inv_frame1_mask
+        self.gpo_mask = gpo_mask
         self.old_hash = None
         self.binary_data = None
         self.delay = 0
@@ -110,7 +112,7 @@ class PulseData:
             f"f1: {self.freq1}, p1: {self.phase1}, a1: {self.amp1}, fr: {self.framerot0}, fr2: {self.framerot1}, "
             f"wt:{self.waittrig}, sm: {self.sync_mask}, em: {self.enable_mask}, fe: {self.fb_enable_mask}"
             f"a: {self.apply_at_end_mask}, r: {self.rst_frame_mask}, d: {self.delay} fwd0: {self.fwd_frame0_mask}, "
-            f"fwd1: {self.fwd_frame1_mask}, inv0: {self.inv_frame0_mask} inv1: {self.inv_frame1_mask}"
+            f"fwd1: {self.fwd_frame1_mask}, inv0: {self.inv_frame0_mask} inv1: {self.inv_frame1_mask} gpo: {self.gpo_mask}"
         )
 
     def __eq__(self, other):
@@ -140,6 +142,7 @@ class PulseData:
                     "fwd_frame1_mask",
                     "inv_frame0_mask",
                     "inv_frame1_mask",
+                    "gpo_mask",
                     "delay",
                 ],
             )
@@ -185,6 +188,7 @@ class PulseData:
                     "fwd_frame1_mask",
                     "inv_frame0_mask",
                     "inv_frame1_mask",
+                    "gpo_mask",
                     "delay",
                 ],
             )
@@ -232,6 +236,7 @@ class PulseData:
                 self.fwd_frame1_mask,
                 self.inv_frame0_mask,
                 self.inv_frame1_mask,
+                self.gpo_mask,
                 self.delay,
             )
         )
@@ -262,6 +267,7 @@ class PulseData:
             fwd_frame1_mask=self.fwd_frame1_mask,
             inv_frame0_mask=self.inv_frame0_mask,
             inv_frame1_mask=self.inv_frame1_mask,
+            gpo_mask=self.gpo_mask,
             bypass=bypass,
         )
         return self.binary_data
