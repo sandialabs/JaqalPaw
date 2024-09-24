@@ -1,6 +1,7 @@
 from functools import reduce
 
 from .encoding_parameters import ENDIANNESS
+import jaqalpaw.utilities.parameters
 from jaqalpaw.utilities.parameters import CLOCK_FREQUENCY, MAXAMP
 
 
@@ -56,6 +57,8 @@ def convert_freq_full(frqw):
 def convert_phase_full(phsw):
     """Converts to full 40 bit frequency word for
     packing into 256 bit spline data"""
+    if jaqalpaw.utilities.parameters.INVERT_PHASE:
+        phsw = -phsw
     convf = int(round(phsw / 360.0 * (1 << 40)))
     return convf
 
@@ -63,6 +66,8 @@ def convert_phase_full(phsw):
 def convert_phase_full_mod_2pi(phsw):
     """Converts to full 40 bit frequency word for
     packing into 256 bit spline data"""
+    if jaqalpaw.utilities.parameters.INVERT_PHASE:
+        phsw = -phsw
     if abs(phsw) >= 360.0:
         phsw %= 360.0
     if phsw >= 180:
